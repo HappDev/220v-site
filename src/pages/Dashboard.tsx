@@ -17,6 +17,12 @@ import {
   Link2,
   Copy,
   QrCode,
+  CreditCard,
+  ShoppingCart,
+  Gauge,
+  BookOpen,
+  LifeBuoy,
+  MoreHorizontal,
 } from "lucide-react";
 import { invokeFunction } from "@/lib/api";
 import {
@@ -32,8 +38,8 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import InstructionsModal, { oneClickHappUrl, type InstructionsPlatform } from "@/components/InstructionsModal";
 import LandingShell from "@/pages/landing/LandingShell";
-import LandingHeader from "@/pages/landing/LandingHeader";
 import LandingFooter from "@/pages/landing/LandingFooter";
+import DashboardSidebar, { type DashboardSidebarItem } from "@/components/DashboardSidebar";
 
 interface UserData {
   plan: string;
@@ -615,10 +621,57 @@ const Dashboard = () => {
   const isExpired = (userData?.status ?? "").toUpperCase() === "EXPIRED";
   const isTrafficExhausted = (userData?.trafficLimitBytes ?? 0) > 0 && (userData?.usedTrafficBytes ?? 0) >= (userData?.trafficLimitBytes ?? 0);
 
+  const sidebarItems: DashboardSidebarItem[] = [
+    {
+      key: "subscription",
+      label: "Моя подписка",
+      icon: CreditCard,
+      onClick: () => setMySubscriptionOpen(true),
+      primary: true,
+    },
+    {
+      key: "tariff",
+      label: "Купить тариф",
+      icon: ShoppingCart,
+      onClick: () => setTariffOpen(true),
+    },
+    ...(isPremiumPlan
+      ? ([
+          {
+            key: "traffic",
+            label: "Купить трафик",
+            icon: Gauge,
+            onClick: () => {
+              setTrafficBuyOpen(true);
+              setTrafficPaymentStep(null);
+            },
+          },
+        ] as DashboardSidebarItem[])
+      : []),
+    {
+      key: "instructions",
+      label: "Инструкции",
+      icon: BookOpen,
+      onClick: () => openInstructions(),
+    },
+    {
+      key: "support",
+      label: "Поддержка",
+      icon: LifeBuoy,
+      onClick: () => navigate("/support"),
+    },
+    {
+      key: "other",
+      label: "Другое",
+      icon: MoreHorizontal,
+      onClick: () => setOtherMenuOpen(true),
+    },
+  ];
+
   if (loading) {
     return (
-      <LandingShell>
-        <LandingHeader />
+      <LandingShell className="landing-root--with-sidebar">
+        <DashboardSidebar items={[]} onLogout={handleLogout} />
         <main className="app-page">
           <div className="container">
             <div className="app-page__notice">
@@ -634,8 +687,8 @@ const Dashboard = () => {
 
   if (error) {
     return (
-      <LandingShell>
-        <LandingHeader />
+      <LandingShell className="landing-root--with-sidebar">
+        <DashboardSidebar items={[]} onLogout={handleLogout} />
         <main className="app-page">
           <div className="container">
             <div className="app-page__notice">
@@ -652,49 +705,8 @@ const Dashboard = () => {
   }
 
   return (
-    <LandingShell>
-      <LandingHeader
-        nav={
-          <>
-            <button
-              type="button"
-              className="nav__link nav__link--primary"
-              onClick={() => setMySubscriptionOpen(true)}
-            >
-              Моя подписка
-            </button>
-            <button type="button" className="nav__link" onClick={() => setTariffOpen(true)}>
-              Купить тариф
-            </button>
-            {isPremiumPlan ? (
-              <button
-                type="button"
-                className="nav__link"
-                onClick={() => {
-                  setTrafficBuyOpen(true);
-                  setTrafficPaymentStep(null);
-                }}
-              >
-                Купить трафик
-              </button>
-            ) : null}
-            <button type="button" className="nav__link" onClick={() => openInstructions()}>
-              Инструкции
-            </button>
-            <button type="button" className="nav__link" onClick={() => navigate("/support")}>
-              Поддержка
-            </button>
-            <button type="button" className="nav__link" onClick={() => setOtherMenuOpen(true)}>
-              Другое
-            </button>
-          </>
-        }
-        cta={
-          <button type="button" className="btn btn--ghost" onClick={handleLogout}>
-            Выйти
-          </button>
-        }
-      />
+    <LandingShell className="landing-root--with-sidebar">
+      <DashboardSidebar items={sidebarItems} onLogout={handleLogout} email={email || undefined} />
 
       <main>
         <section className="app-page">
