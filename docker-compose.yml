@@ -1,0 +1,26 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - "${SUPPORT_CHAT_UPLOADS_HOST_DIR:-/home/sony/letovpn/support-chat-uploads}:${SUPPORT_CHAT_UPLOADS_DIR:-/app/uploads/support-chat}"
+    expose:
+      - "3001"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+    ports:
+      # Vite dev uses 8080 in vite.config — default 9080 avoids clash. Override: HOST_WEB_PORT=8080 docker compose up
+      - "${HOST_WEB_PORT:-9085}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+

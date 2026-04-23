@@ -1,40 +1,115 @@
-# 220v VPN — лендинг
+# 220v — Access Gate Connect
 
-Одностраничный адаптивный лендинг VPN-сервиса «220v VPN», собранный на чистом HTML, CSS и JavaScript без зависимостей.
+Веб-приложение для управления VPN-подписками: авторизация по email, покупка тарифов, управление устройствами.
 
-## Структура
+## Технологии
 
-```
-.
-├── index.html      # разметка лендинга
-├── styles.css      # стили (тёмная тема + акцент #C6FF3D)
-├── script.js       # мобильное меню + мини-параллакс маскота
-├── assets/
-│   └── mascot.png  # 3D-маскот (робот-вилка)
-└── README.md
-```
-
-## Разделы страницы
-
-- **Шапка** — логотип, навигация (О нас / Цены / Скачать), кнопка «Войти», адаптивное бургер-меню.
-- **Hero** — крупный заголовок с акцентами, описание, CTA «Скачать 220v VPN» и анимированный маскот.
-- **Фичи** — 4 преимущества (Безопасно, Быстро, Свободно, Всегда на связи) с SVG-иконками.
-- **Trial-блок** — щит «24 часа», описание бесплатного периода и CTA «Попробовать».
-- **Футер** — логотип и копирайт.
+- **Frontend:** Vite + React + TypeScript + shadcn-ui + Tailwind CSS
+- **Backend (API):** Node.js + Express (`api/index.mjs`)
+- **VPN-панель:** [Remnawave](https://docs.rw) (`REMNAWAVE_URL`) — чтение профиля, устройства, ссылки подписки
+- **RMW:** вход в дашборд (`POST /v1/auth/session`) и оплата (`POST /v1/billing/checkout`); применение тарифа и webhook платёжного провайдера выполняются на стороне RMW
+- **Деплой:** Docker Compose (nginx + api)
 
 ## Запуск
 
-Сайт статический — достаточно открыть `index.html` в браузере.  
-Либо поднять локальный сервер, например:
-
-```bash
-python3 -m http.server 8000
-# затем открыть http://localhost:8000
+```sh
+cp .env.example .env   # заполнить переменные
+docker compose up -d --build
+# Фронтенд: http://localhost:9080
+# API внутри Docker-сети: api:3001 (проксируется через nginx /api/*)
 ```
 
-## Дизайн
+## Переменные окружения (.env)
 
-- Шрифт: [Manrope](https://fonts.google.com/specimen/Manrope) (Google Fonts).
-- Палитра: `#0a0a0a` фон, `#c6ff3d` акцент, `#ffffff` текст.
-- Полностью адаптивная вёрстка (breakpoints 960px и 520px).
-- Поддержка `prefers-reduced-motion`.
+| Переменная | Описание |
+|---|---|
+| `SEND_CODE_API_URL` | URL PHP-скрипта отправки кода на email |
+| `SEND_CODE_API_TOKEN` | Bearer-токен для скрипта отправки кода |
+| `REMNAWAVE_URL` | URL панели Remnawave |
+| `REMNAWAVE_TOKEN` | API-токен Remnawave (роль API) |
+| `RMW_API_URL` | Базовый URL сервиса RMW (без завершающего `/`) |
+| `RMW_API_KEY` | Ключ `X-Api-Key` для RMW |
+| `NOTICE` | Опционально: текст важного объявления на `/support`; если задан, `GET {RMW_API_URL}/announcement` не вызывается |
+| `PUBLIC_SITE_URL` | HTTPS origin сайта для редиректов после оплаты (пути `/pay/success` и `/pay/fail`) |
+| `BILLING_SUCCESS_URL` | Опционально: явный URL успеха (https), вместе с `BILLING_CANCEL_URL` |
+| `BILLING_CANCEL_URL` | Опционально: явный URL отмены (https) |
+| `MAX_DEVICES` | Лимит устройств на пользователя (если задан) |
+
+---
+
+## Вход в дашборд (сессия через RMW)
+
+После подтверждения кода дашборд вызывает `POST /api/remnawave-proxy` с `action: "check-or-create"`. BFF проксирует в **RMW**:
+
+`POST {RMW_API_URL}/v1/auth/session`  
+Заголовки: `Content-Type: application/json`, `X-Api-Key: RMW_API_KEY`  
+Тело: `{ "email": "user@example.com" }`
+
+**Ответ RMW** может быть:
+
+1. Уже в формате дашборда: `{ "exists": true|false, "user": { "plan", "userUuid", "expireAt", … } }` — отдаётся клиенту как есть.
+2. В формате панели: например `{ "response": [ { …user c uuid, expireAt, userTraffic… } ] }` или объект пользователя с `uuid` — BFF собирает тот же `{ exists, user }` через `buildUserResponse`.
+
+Число устройств (`currentDevices`) всегда подставляется из **RMW**: `GET {RMW_API_URL}/v1/hwid/devices/{userUuid}` с `X-Api-Key`. Список устройств в дашборде (`action: get-devices`) использует тот же эндпоинт, если заданы `RMW_API_URL` и `RMW_API_KEY`.
+
+Если заданы `REMNAWAVE_URL` и `REMNAWAVE_TOKEN`, дополнительно подтягивается ссылка подписки с панели (`GET /api/subscriptions/by-uuid/...`), как раньше.
+
+---
+
+## Оплата (checkout через RMW)
+
+### Схема
+
+```
+Пользователь (Dashboard)
+       │
+       ▼
+  ┌──────────────────────┐       ┌─────────────────────┐
+  │ POST /api/billing/    │──────▶│ RMW                 │
+  │ checkout              │       │ POST /v1/billing/   │
+  │ (BFF, X-Api-Key       │       │ checkout            │
+  │  к RMW на сервере)    │◀──────│ + Idempotency-Key   │
+  └──────────────────────┘       └─────────────────────┘
+       │  payment_url                    │
+       ▼                                 │ webhook провайдера
+  Браузер на странице оплаты             ▼
+                                Применение тарифа в RMW
+```
+
+Секрет RMW не попадает в браузер: фронт обращается только к своему API.
+
+### Тело запроса от фронтенда
+
+`POST /api/billing/checkout`
+
+```json
+{
+  "userUuid": "<rw_uuid из профиля>",
+  "product_key": "sub_6m",
+  "payment_method": 2
+}
+```
+
+| Поле | Описание |
+|---|---|
+| `userUuid` (или `user_ref`) | UUID пользователя в Remnawave |
+| `product_key` | `sub_1m`, `sub_6m`, `sub_12m`, `traffic_20gb`, `traffic_50gb` (BFF мапит в `tariff_key` для RMW: `basic_1m`, `pro_6m`, `premium_12m`, `traffic_20gb`, `traffic_50gb`) |
+| `payment_method` | **Число:** `2` СБП, `11` карта, `13` крипто (строки `sbp` / `card` / `crypto` BFF тоже принимает) |
+
+BFF в RMW шлёт: `user_ref`, `tariff_key`, `payment_method` (int), `return_url`, `failed_url` из `PUBLIC_SITE_URL` или `BILLING_SUCCESS_URL` / `BILLING_CANCEL_URL` (только `https`).
+
+Ответ RMW пробрасывается клиенту; фронт ожидает поле `payment_url` для редиректа.
+
+Цены и маппинг продуктов на тарифы задаются в **RMW**, а не в этом репозитории.
+
+### Telegram-бот
+
+Ранее бот мог вызывать `POST /api/platega-bot-payment` — этот маршрут удалён. Для оплаты из бота вызывайте **RMW** `POST /v1/billing/checkout` с телом в формате RMW (`user_ref`, `tariff_key`, `payment_method` int, `return_url`, `failed_url`) и `X-Api-Key`, либо отдельный BFF-роут.
+
+---
+
+## Логи API
+
+```bash
+docker logs <имя-контейнера-api> --tail 50
+```

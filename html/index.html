@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="220v — надёжный сервис для защиты в интернете. Скрывайте данные, шифруйте трафик и получите свободу в интернете на всех ваших устройствах." />
+  <title>220v — Оставайтесь невидимыми для посторонних</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="header">
+    <div class="container header__inner">
+      <a href="#" class="logo" aria-label="220v">
+        <img src="logo.webp" alt="220v" class="logo__img" />
+      </a>
+
+      <nav class="nav" aria-label="Главное меню">
+        <button type="button" class="nav__link" data-modal-open="about">О нас</button>
+        <button type="button" class="nav__link" data-modal-open="pricing">Цены</button>
+      </nav>
+
+      <a href="#login" class="btn btn--ghost">Войти</a>
+
+      <button class="burger" aria-label="Меню" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- HERO -->
+    <section class="hero">
+      <div class="container hero__grid">
+        <div class="hero__content">
+          <h1 class="hero__title">
+            Оставайтесь<br>
+            <span class="accent">невидимыми</span><br>
+            для посторонних<br>
+            с <span class="accent">220v</span>
+          </h1>
+          <p class="hero__desc">
+            Мы надёжно скрываем ваши данные<br>
+            и шифруем каждое действие в сети.<br>
+            Один сервис для безопасности<br>
+            всех ваших гаджетов.
+          </p>
+          <a href="#login" class="btn btn--primary btn--lg">
+            <svg viewBox="0 0 24 24" class="btn__icon" aria-hidden="true">
+              <path d="M13 2 L4 14 h7 l-2 8 l9-12 h-7 l2-8 Z" fill="currentColor"/>
+            </svg>
+            Регистрация в 220v
+          </a>
+        </div>
+
+        <div class="hero__visual">
+          <div class="hero__mascot-glow" aria-hidden="true"></div>
+          <img src="assets/mascot.png" alt="Маскот 220v" class="hero__mascot" />
+        </div>
+      </div>
+
+      <!-- Features row -->
+      <div class="container">
+        <ul class="features" role="list">
+          <li class="feature">
+            <span class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none"><path d="M16 3 4 7v9c0 7 5 12 12 13 7-1 12-6 12-13V7l-12-4Z" stroke="#C6FF3D" stroke-width="2" stroke-linejoin="round"/><path d="m11 16 4 4 7-8" stroke="#C6FF3D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <h3 class="feature__title">Безопасно</h3>
+            <p class="feature__desc">Ваши данные<br>под защитой</p>
+          </li>
+          <li class="feature">
+            <span class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none"><path d="M18 3 6 18h7l-3 11 12-15h-7l3-11Z" stroke="#C6FF3D" stroke-width="2" stroke-linejoin="round"/></svg>
+            </span>
+            <h3 class="feature__title">Быстро</h3>
+            <p class="feature__desc">Высокая скорость<br>без ограничений</p>
+          </li>
+          <li class="feature">
+            <span class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="13" stroke="#C6FF3D" stroke-width="2"/><path d="M3 16h26M16 3c3.5 4 5.5 8 5.5 13s-2 9-5.5 13c-3.5-4-5.5-8-5.5-13S12.5 7 16 3Z" stroke="#C6FF3D" stroke-width="2"/></svg>
+            </span>
+            <h3 class="feature__title">Свободно</h3>
+            <p class="feature__desc">Доступ к любому<br>контенту</p>
+          </li>
+          <li class="feature">
+            <span class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none"><path d="M12 3v7M20 3v7M8 10h16v6a8 8 0 0 1-8 8 8 8 0 0 1-8-8v-6ZM16 24v5" stroke="#C6FF3D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <h3 class="feature__title">Всегда на связи</h3>
+            <p class="feature__desc">220v — энергия<br>свободы в интернете</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <a href="#" class="logo logo--footer" aria-label="220v">
+        <img src="logo.webp" alt="220v" class="logo__img" />
+      </a>
+      <nav class="footer__links" aria-label="Правовая информация">
+        <a href="terms.html" class="footer__link">Условия использования</a>
+        <span class="footer__dot" aria-hidden="true">•</span>
+        <a href="policy.html" class="footer__link">Политика конфиденциальности</a>
+      </nav>
+      <p class="footer__copy">© 2026 220v. Все права защищены.</p>
+    </div>
+  </footer>
+
+  <!-- Modal: About -->
+  <div class="modal" id="modal-about" role="dialog" aria-modal="true" aria-labelledby="modal-about-title" hidden>
+    <div class="modal__backdrop" data-modal-close></div>
+    <div class="modal__dialog" role="document">
+      <button type="button" class="modal__close" aria-label="Закрыть" data-modal-close>
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <h2 class="modal__title" id="modal-about-title">О нас</h2>
+      <div class="modal__body">
+        <p>
+          Опираясь на многолетний опыт управления серверами, наша команда разработала
+          сервис для создания защищённых интернет-туннелей.
+        </p>
+        <p>
+          Мы понимаем все тонкости маршрутизации и выстраивания анонимных соединений.
+          Наш приоритет — чтобы трафик клиентов всегда шёл к нужным ресурсам
+          по оптимальным и безопасным путям.
+        </p>
+        <p>
+          Мы лично пользуемся своей разработкой каждый день, на 100% уверены в её качестве
+          и с гордостью предлагаем её вам!
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Pricing -->
+  <div class="modal" id="modal-pricing" role="dialog" aria-modal="true" aria-labelledby="modal-pricing-title" hidden>
+    <div class="modal__backdrop" data-modal-close></div>
+    <div class="modal__dialog modal__dialog--wide" role="document">
+      <button type="button" class="modal__close" aria-label="Закрыть" data-modal-close>
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <h2 class="modal__title" id="modal-pricing-title">Тарифы</h2>
+      <p class="modal__subtitle">Выберите срок — чем дольше, тем выгоднее</p>
+
+      <div class="plans">
+        <div class="plan">
+          <div class="plan__head">
+            <h3 class="plan__name">1 месяц</h3>
+          </div>
+          <div class="plan__price">
+            <span class="plan__amount">450</span>
+            <span class="plan__currency">₽</span>
+          </div>
+          <p class="plan__period">за 1 месяц</p>
+          <ul class="plan__features" role="list">
+            <li>Все локации</li>
+            <li>Безлимитный трафик*</li>
+            <li>Поддержка 24/7</li>
+          </ul>
+          <a href="https://t.me/vpn220v_bot" class="btn btn--ghost btn--wide plan__btn">Выбрать</a>
+        </div>
+
+        <div class="plan plan--featured">
+          <span class="plan__badge">-15%</span>
+          <div class="plan__head">
+            <h3 class="plan__name">6 месяцев</h3>
+          </div>
+          <div class="plan__price">
+            <span class="plan__amount">2 295</span>
+            <span class="plan__currency">₽</span>
+          </div>
+          <p class="plan__period">≈ 382 ₽ / месяц</p>
+          <ul class="plan__features" role="list">
+            <li>Все локации</li>
+            <li>Безлимитный трафик*</li>
+            <li>Поддержка 24/7</li>
+            <li>Экономия 15%</li>
+          </ul>
+          <a href="https://t.me/vpn220v_bot" class="btn btn--primary btn--wide plan__btn">Выбрать</a>
+        </div>
+
+        <div class="plan">
+          <span class="plan__badge plan__badge--alt">-30%</span>
+          <div class="plan__head">
+            <h3 class="plan__name">1 год</h3>
+          </div>
+          <div class="plan__price">
+            <span class="plan__amount">3 780</span>
+            <span class="plan__currency">₽</span>
+          </div>
+          <p class="plan__period">≈ 315 ₽ / месяц</p>
+          <ul class="plan__features" role="list">
+            <li>Все локации</li>
+            <li>Безлимитный трафик*</li>
+            <li>Приоритетная поддержка</li>
+            <li>Максимальная выгода — 30%</li>
+          </ul>
+          <a href="https://t.me/vpn220v_bot" class="btn btn--ghost btn--wide plan__btn">Выбрать</a>
+        </div>
+      </div>
+
+      <p class="modal__note">
+        * На серверах категории «Мобильная сеть» действует лимит 10 ГБ в месяц.
+        Подробнее — в <a href="terms.html" class="modal__link">условиях использования</a>.
+      </p>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
