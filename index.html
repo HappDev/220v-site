@@ -16,13 +16,12 @@
   <header class="header">
     <div class="container header__inner">
       <a href="#" class="logo" aria-label="220v VPN">
-        <img src="assets/logo.png" alt="220v VPN" class="logo__img" />
+        <img src="logo.webp" alt="220v VPN" class="logo__img" />
       </a>
 
       <nav class="nav" aria-label="Главное меню">
-        <a href="#about" class="nav__link">О нас</a>
-        <a href="#pricing" class="nav__link">Цены</a>
-        <a href="#download" class="nav__link">Скачать</a>
+        <button type="button" class="nav__link" data-modal-open="about">О нас</button>
+        <button type="button" class="nav__link" data-modal-open="pricing">Цены</button>
       </nav>
 
       <a href="#login" class="btn btn--ghost">Войти</a>
@@ -50,7 +49,7 @@
             Один сервис для безопасности<br>
             всех ваших гаджетов.
           </p>
-          <a href="#download" class="btn btn--primary btn--lg">
+          <a href="#login" class="btn btn--primary btn--lg">
             <svg viewBox="0 0 24 24" class="btn__icon" aria-hidden="true">
               <path d="M13 2 L4 14 h7 l-2 8 l9-12 h-7 l2-8 Z" fill="currentColor"/>
             </svg>
@@ -98,64 +97,125 @@
         </ul>
       </div>
     </section>
-
-    <!-- TRIAL -->
-    <section class="trial" id="download">
-      <div class="container">
-        <div class="trial__card">
-          <div class="trial__shield" aria-hidden="true">
-            <svg viewBox="0 0 260 300" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <radialGradient id="sg" cx="50%" cy="40%" r="70%">
-                  <stop offset="0%" stop-color="#C6FF3D" stop-opacity=".35"/>
-                  <stop offset="60%" stop-color="#C6FF3D" stop-opacity=".08"/>
-                  <stop offset="100%" stop-color="#C6FF3D" stop-opacity="0"/>
-                </radialGradient>
-              </defs>
-              <path d="M130 10 L20 50 V160 C20 225 70 275 130 290 C190 275 240 225 240 160 V50 Z"
-                    fill="url(#sg)" stroke="#C6FF3D" stroke-width="3"/>
-              <circle cx="130" cy="255" r="18" fill="none" stroke="#C6FF3D" stroke-width="2"/>
-              <path d="m121 255 6 6 12-12" stroke="#C6FF3D" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <div class="trial__shield-text">
-              <span class="trial__number">24</span>
-              <span class="trial__unit">часа</span>
-            </div>
-          </div>
-
-          <div class="trial__content">
-            <h2 class="trial__title">
-              Бесплатный <span class="accent">тестовый период</span>
-            </h2>
-            <p class="trial__desc">
-              Попробуйте все возможности 220v VPN бесплатно
-              в течение 24 часов. Без ограничений по скорости,
-              трафику и функциям. Не нужно указывать карту.
-            </p>
-            <a href="#try" class="btn btn--primary btn--lg btn--wide">
-              <svg viewBox="0 0 24 24" class="btn__icon" aria-hidden="true">
-                <path d="M13 2 L4 14 h7 l-2 8 l9-12 h-7 l2-8 Z" fill="currentColor"/>
-              </svg>
-              Попробовать
-            </a>
-            <p class="trial__note">
-              <svg viewBox="0 0 20 20" aria-hidden="true" class="trial__check"><circle cx="10" cy="10" r="8.5" fill="none" stroke="#C6FF3D" stroke-width="1.5"/><path d="m6 10 3 3 5-6" fill="none" stroke="#C6FF3D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Отмена в любой момент. Обязательств никаких.
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
   </main>
 
   <footer class="footer">
     <div class="container footer__inner">
       <a href="#" class="logo logo--footer" aria-label="220v VPN">
-        <img src="assets/logo.png" alt="220v VPN" class="logo__img" />
+        <img src="logo.webp" alt="220v VPN" class="logo__img" />
       </a>
+      <nav class="footer__links" aria-label="Правовая информация">
+        <a href="terms.html" class="footer__link">Условия использования</a>
+        <span class="footer__dot" aria-hidden="true">•</span>
+        <a href="policy.html" class="footer__link">Политика конфиденциальности</a>
+      </nav>
       <p class="footer__copy">© 2026 220v VPN. Все права защищены.</p>
     </div>
   </footer>
+
+  <!-- Modal: About -->
+  <div class="modal" id="modal-about" role="dialog" aria-modal="true" aria-labelledby="modal-about-title" hidden>
+    <div class="modal__backdrop" data-modal-close></div>
+    <div class="modal__dialog" role="document">
+      <button type="button" class="modal__close" aria-label="Закрыть" data-modal-close>
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <h2 class="modal__title" id="modal-about-title">О нас</h2>
+      <div class="modal__body">
+        <p>
+          Опираясь на многолетний опыт управления серверами, наша команда разработала
+          сервис для создания защищённых интернет-туннелей.
+        </p>
+        <p>
+          Мы понимаем все тонкости маршрутизации и выстраивания анонимных соединений.
+          Наш приоритет — чтобы трафик клиентов всегда шёл к нужным ресурсам
+          по оптимальным и безопасным путям.
+        </p>
+        <p>
+          Мы лично пользуемся своей разработкой каждый день, на 100% уверены в её качестве
+          и с гордостью предлагаем её вам!
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Pricing -->
+  <div class="modal" id="modal-pricing" role="dialog" aria-modal="true" aria-labelledby="modal-pricing-title" hidden>
+    <div class="modal__backdrop" data-modal-close></div>
+    <div class="modal__dialog modal__dialog--wide" role="document">
+      <button type="button" class="modal__close" aria-label="Закрыть" data-modal-close>
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <h2 class="modal__title" id="modal-pricing-title">Тарифы</h2>
+      <p class="modal__subtitle">Выберите срок — чем дольше, тем выгоднее</p>
+
+      <div class="plans">
+        <div class="plan">
+          <div class="plan__head">
+            <h3 class="plan__name">1 месяц</h3>
+          </div>
+          <div class="plan__price">
+            <span class="plan__amount">450</span>
+            <span class="plan__currency">₽</span>
+          </div>
+          <p class="plan__period">за 1 месяц</p>
+          <ul class="plan__features" role="list">
+            <li>Все локации</li>
+            <li>Безлимитный трафик*</li>
+            <li>Поддержка 24/7</li>
+          </ul>
+          <a href="https://t.me/vpn220v_bot" class="btn btn--ghost btn--wide plan__btn">Выбрать</a>
+        </div>
+
+        <div class="plan plan--featured">
+          <span class="plan__badge">-15%</span>
+          <div class="plan__head">
+            <h3 class="plan__name">6 месяцев</h3>
+          </div>
+          <div class="plan__price">
+            <span class="plan__amount">2 295</span>
+            <span class="plan__currency">₽</span>
+          </div>
+          <p class="plan__period">≈ 382 ₽ / месяц</p>
+          <ul class="plan__features" role="list">
+            <li>Все локации</li>
+            <li>Безлимитный трафик*</li>
+            <li>Поддержка 24/7</li>
+            <li>Экономия 15%</li>
+          </ul>
+          <a href="https://t.me/vpn220v_bot" class="btn btn--primary btn--wide plan__btn">Выбрать</a>
+        </div>
+
+        <div class="plan">
+          <span class="plan__badge plan__badge--alt">-30%</span>
+          <div class="plan__head">
+            <h3 class="plan__name">1 год</h3>
+          </div>
+          <div class="plan__price">
+            <span class="plan__amount">3 780</span>
+            <span class="plan__currency">₽</span>
+          </div>
+          <p class="plan__period">≈ 315 ₽ / месяц</p>
+          <ul class="plan__features" role="list">
+            <li>Все локации</li>
+            <li>Безлимитный трафик*</li>
+            <li>Приоритетная поддержка</li>
+            <li>Максимальная выгода — 30%</li>
+          </ul>
+          <a href="https://t.me/vpn220v_bot" class="btn btn--ghost btn--wide plan__btn">Выбрать</a>
+        </div>
+      </div>
+
+      <p class="modal__note">
+        * На серверах категории «Мобильная сеть» действует лимит 10 ГБ в месяц.
+        Подробнее — в <a href="terms.html" class="modal__link">условиях использования</a>.
+      </p>
+    </div>
+  </div>
 
   <script src="script.js"></script>
 </body>
