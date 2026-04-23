@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="220v VPN — надёжный VPN-сервис. Скрывайте данные, шифруйте трафик и получите свободу в интернете на всех ваших устройствах." />
+  <title>220v VPN — Оставайтесь невидимыми для посторонних</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="header">
+    <div class="container header__inner">
+      <a href="#" class="logo" aria-label="220v VPN">
+        <img src="assets/logo.png" alt="220v VPN" class="logo__img" />
+      </a>
+
+      <nav class="nav" aria-label="Главное меню">
+        <a href="#about" class="nav__link">О нас</a>
+        <a href="#pricing" class="nav__link">Цены</a>
+        <a href="#download" class="nav__link">Скачать</a>
+      </nav>
+
+      <a href="#login" class="btn btn--ghost">Войти</a>
+
+      <button class="burger" aria-label="Меню" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- HERO -->
+    <section class="hero">
+      <div class="container hero__grid">
+        <div class="hero__content">
+          <h1 class="hero__title">
+            Оставайтесь<br>
+            <span class="accent">невидимыми</span><br>
+            для посторонних<br>
+            с <span class="accent">220v VPN.</span>
+          </h1>
+          <p class="hero__desc">
+            Мы надёжно скрываем ваши данные<br>
+            и шифруем каждое действие в сети.<br>
+            Один сервис для безопасности<br>
+            всех ваших гаджетов.
+          </p>
+          <a href="#download" class="btn btn--primary btn--lg">
+            <svg viewBox="0 0 24 24" class="btn__icon" aria-hidden="true">
+              <path d="M13 2 L4 14 h7 l-2 8 l9-12 h-7 l2-8 Z" fill="currentColor"/>
+            </svg>
+            Скачать 220v VPN
+          </a>
+        </div>
+
+        <div class="hero__visual">
+          <div class="hero__mascot-glow" aria-hidden="true"></div>
+          <img src="assets/mascot.png" alt="Маскот 220v VPN" class="hero__mascot" />
+        </div>
+      </div>
+
+      <!-- Features row -->
+      <div class="container">
+        <ul class="features" role="list">
+          <li class="feature">
+            <span class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none"><path d="M16 3 4 7v9c0 7 5 12 12 13 7-1 12-6 12-13V7l-12-4Z" stroke="#C6FF3D" stroke-width="2" stroke-linejoin="round"/><path d="m11 16 4 4 7-8" stroke="#C6FF3D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <h3 class="feature__title">Безопасно</h3>
+            <p class="feature__desc">Ваши данные<br>под защитой</p>
+          </li>
+          <li class="feature">
+            <span class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none"><path d="M18 3 6 18h7l-3 11 12-15h-7l3-11Z" stroke="#C6FF3D" stroke-width="2" stroke-linejoin="round"/></svg>
+            </span>
+            <h3 class="feature__title">Быстро</h3>
+            <p class="feature__desc">Высокая скорость<br>без ограничений</p>
+          </li>
+          <li class="feature">
+            <span class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="13" stroke="#C6FF3D" stroke-width="2"/><path d="M3 16h26M16 3c3.5 4 5.5 8 5.5 13s-2 9-5.5 13c-3.5-4-5.5-8-5.5-13S12.5 7 16 3Z" stroke="#C6FF3D" stroke-width="2"/></svg>
+            </span>
+            <h3 class="feature__title">Свободно</h3>
+            <p class="feature__desc">Доступ к любому<br>контенту</p>
+          </li>
+          <li class="feature">
+            <span class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none"><path d="M12 3v7M20 3v7M8 10h16v6a8 8 0 0 1-8 8 8 8 0 0 1-8-8v-6ZM16 24v5" stroke="#C6FF3D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <h3 class="feature__title">Всегда на связи</h3>
+            <p class="feature__desc">220v VPN — энергия<br>свободы в интернете</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- TRIAL -->
+    <section class="trial" id="download">
+      <div class="container">
+        <div class="trial__card">
+          <div class="trial__shield" aria-hidden="true">
+            <svg viewBox="0 0 260 300" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <radialGradient id="sg" cx="50%" cy="40%" r="70%">
+                  <stop offset="0%" stop-color="#C6FF3D" stop-opacity=".35"/>
+                  <stop offset="60%" stop-color="#C6FF3D" stop-opacity=".08"/>
+                  <stop offset="100%" stop-color="#C6FF3D" stop-opacity="0"/>
+                </radialGradient>
+              </defs>
+              <path d="M130 10 L20 50 V160 C20 225 70 275 130 290 C190 275 240 225 240 160 V50 Z"
+                    fill="url(#sg)" stroke="#C6FF3D" stroke-width="3"/>
+              <circle cx="130" cy="255" r="18" fill="none" stroke="#C6FF3D" stroke-width="2"/>
+              <path d="m121 255 6 6 12-12" stroke="#C6FF3D" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <div class="trial__shield-text">
+              <span class="trial__number">24</span>
+              <span class="trial__unit">часа</span>
+            </div>
+          </div>
+
+          <div class="trial__content">
+            <h2 class="trial__title">
+              Бесплатный <span class="accent">тестовый период</span>
+            </h2>
+            <p class="trial__desc">
+              Попробуйте все возможности 220v VPN бесплатно
+              в течение 24 часов. Без ограничений по скорости,
+              трафику и функциям. Не нужно указывать карту.
+            </p>
+            <a href="#try" class="btn btn--primary btn--lg btn--wide">
+              <svg viewBox="0 0 24 24" class="btn__icon" aria-hidden="true">
+                <path d="M13 2 L4 14 h7 l-2 8 l9-12 h-7 l2-8 Z" fill="currentColor"/>
+              </svg>
+              Попробовать
+            </a>
+            <p class="trial__note">
+              <svg viewBox="0 0 20 20" aria-hidden="true" class="trial__check"><circle cx="10" cy="10" r="8.5" fill="none" stroke="#C6FF3D" stroke-width="1.5"/><path d="m6 10 3 3 5-6" fill="none" stroke="#C6FF3D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Отмена в любой момент. Обязательств никаких.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <a href="#" class="logo logo--footer" aria-label="220v VPN">
+        <img src="assets/logo.png" alt="220v VPN" class="logo__img" />
+      </a>
+      <p class="footer__copy">© 2026 220v VPN. Все права защищены.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
