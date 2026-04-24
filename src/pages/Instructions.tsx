@@ -275,23 +275,25 @@ const ScreenshotGallery = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`max-h-[90vh] overflow-hidden ${large ? "sm:max-w-4xl" : "sm:max-w-lg"}`}>
+      <DialogContent
+        className={`dash-modal max-h-[90vh] overflow-hidden ${large ? "sm:max-w-4xl" : "sm:max-w-lg"}`}
+      >
         <DialogHeader>
           <DialogTitle>Скриншоты</DialogTitle>
           <DialogDescription>
             {idx + 1} / {images.length}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex min-w-0 items-center gap-2">
-          <button onClick={prev} className="shrink-0 rounded-full p-1 hover:bg-accent">
+        <div className="dash-modal__gallery">
+          <button type="button" onClick={prev} className="dash-modal__gallery-nav" aria-label="Предыдущий">
             <ChevronLeft className="h-5 w-5" />
           </button>
           <img
             src={images[idx]}
             alt={`Скриншот ${idx + 1}`}
-            className={`min-w-0 rounded-lg object-contain ${large ? "max-h-[80vh] w-full" : "max-h-[65vh] w-full"}`}
+            className={`dash-modal__gallery-img ${large ? "max-h-[80vh]" : "max-h-[65vh]"}`}
           />
-          <button onClick={next} className="shrink-0 rounded-full p-1 hover:bg-accent">
+          <button type="button" onClick={next} className="dash-modal__gallery-nav" aria-label="Следующий">
             <ChevronRight className="h-5 w-5" />
           </button>
         </div>
@@ -376,118 +378,112 @@ const Instructions = () => {
     android: (
       <div className="flex flex-col gap-3">
         <Step n={1}>
-          <strong>Установка:</strong>{" "}
+          Установи Happ из{" "}
           <ExternalLink href="https://play.google.com/store/apps/details?id=com.happproxy">Google Play</ExternalLink>{" "}
           или{" "}
-          <ExternalLink href="https://disk.yandex.ru/d/u_d6cVaTVnyWuw">Скачай APK</ExternalLink>.
+          <ExternalLink href="https://disk.yandex.ru/d/u_d6cVaTVnyWuw">скачай APK</ExternalLink>.
         </Step>
         <Step n={2}>
-          <strong>Копирование:</strong> Нажми <CopySubscriptionLink subscriptionUrl={subscriptionUrl} /> или отсканируй{" "}
+          Нажми <CopySubscriptionLink subscriptionUrl={subscriptionUrl} /> или отсканируй{" "}
           <QrCodeLink subscriptionUrl={subscriptionUrl} onOpenQr={() => setQrOpen(true)} />.
         </Step>
         <Step n={3}>
-          <strong>Импорт:</strong> Открой Happ. На главном экране внизу слева нажми кнопку «Из буфера». Или отсканируй
+          Открой Happ. На главном экране внизу слева нажми кнопку «Из буфера». Или отсканируй
           QR-Code.
         </Step>
         <Step n={4}>
-          <strong>Запуск:</strong> Выбери сервер и нажми кнопку подключения.
+          Выбери сервер и нажми кнопку подключения.
         </Step>
-        <ActionButtons onScreenshots={handleScreenshots} />
       </div>
     ),
     ios: (
       <div className="flex flex-col gap-3">
         <Step n={1}>
-          <strong>Установка:</strong> Установи{" "}
+          Установи{" "}
           <ExternalLink href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973">Happ</ExternalLink> из App Store.
         </Step>
         <Step n={2}>
-          <strong>Копирование:</strong> Нажми <CopySubscriptionLink subscriptionUrl={subscriptionUrl} /> или отсканируй{" "}
+          Нажми <CopySubscriptionLink subscriptionUrl={subscriptionUrl} /> или отсканируй{" "}
           <QrCodeLink subscriptionUrl={subscriptionUrl} onOpenQr={() => setQrOpen(true)} />.
         </Step>
         <Step n={3}>
-          <strong>Импорт:</strong> Открой приложение. На главной странице внизу слева нажми «Из буфера». Или отсканируй
+          Открой приложение. На главной странице внизу слева нажми «Из буфера». Или отсканируй
           QR-Code.
         </Step>
         <Step n={4}>
-          <strong>Запуск:</strong> Выбери сервер и включи основной тумблер.
+          Выбери сервер и включи основной тумблер.
         </Step>
-        <ActionButtons onScreenshots={handleScreenshots} />
       </div>
     ),
     windows: (
       <div className="flex flex-col gap-3">
         <Step n={1}>
-          <strong>Установка:</strong> Скачай и установи{" "}
+          Скачай и установи{" "}
           <ExternalLink href="https://disk.yandex.ru/d/16xq7Y-keHg1nQ">инсталлятор</ExternalLink>.
         </Step>
         <Step n={2}>
-          <strong>Копирование:</strong> Нажми <CopySubscriptionLink subscriptionUrl={subscriptionUrl} />.
+          Нажми <CopySubscriptionLink subscriptionUrl={subscriptionUrl} />.
         </Step>
         <Step n={3}>
-          <strong>Импорт:</strong> Запусти Happ и вставь ссылку подписки в поле ввода.
+          Запусти Happ и вставь ссылку подписки в поле ввода.
         </Step>
         <Step n={4}>
-          <strong>Запуск:</strong> Выбери локацию и нажми Connect.
+          Выбери локацию и нажми Connect.
         </Step>
-        <ActionButtons onScreenshots={handleScreenshots} />
       </div>
     ),
     linux: (
       <div className="flex flex-col gap-3">
         <Step n={1}>
-          <strong>Установка:</strong> Скачай пакет для своей системы и установи его:{" "}
+          Скачай пакет для своей системы и установи его:{" "}
           <ExternalLink href="https://disk.yandex.ru/d/GoscFb_zsFYN8A">.deb</ExternalLink>,{" "}
           <ExternalLink href="https://disk.yandex.ru/d/SB06qEHDMPFY0A">.rpm</ExternalLink>{" "}
           или{" "}
           <ExternalLink href="https://disk.yandex.ru/d/cOTi2cIomWiq8A">.pkg</ExternalLink>.
         </Step>
         <Step n={2}>
-          <strong>Копирование:</strong> Нажми <CopySubscriptionLink subscriptionUrl={subscriptionUrl} />.
+          Нажми <CopySubscriptionLink subscriptionUrl={subscriptionUrl} />.
         </Step>
         <Step n={3}>
-          <strong>Импорт:</strong> Запусти Happ и вставь ссылку подписки в поле ввода.
+          Запусти Happ и вставь ссылку подписки в поле ввода.
         </Step>
         <Step n={4}>
-          <strong>Запуск:</strong> Нажми Connect.
+          Нажми Connect.
         </Step>
-        <ActionButtons onScreenshots={handleScreenshots} />
       </div>
     ),
     appletv: (
       <div className="flex flex-col gap-3">
         <Step n={1}>
-          <strong>Установка:</strong> Найди в App Store приложение <strong>Happ</strong> и установи его{" "}
+          Найди в App Store приложение <strong>Happ</strong> и установи его{" "}
           <ExternalLink href="https://apps.apple.com/us/app/happ-proxy-utility-for-tv/id6748297274">App Store</ExternalLink>.
         </Step>
         <Step n={2}>
-          <strong>Подготовка:</strong> Запусти приложение на ТВ — на экране появится QR-код.
+          Запусти приложение на ТВ — на экране появится QR-код.
         </Step>
         <Step n={3}>
-          <strong>Передача:</strong> Открой Happ на смартфоне, отсканируй этот QR-код, выдели нужную подписку и нажми кнопку «Передать».
+          Открой Happ на смартфоне, отсканируй этот QR-код, выдели нужную подписку и нажми кнопку «Передать».
         </Step>
         <Step n={4}>
-          <strong>Запуск:</strong> На ТВ выбери полученную подписку и нажми кнопку подключения.
+          На ТВ выбери полученную подписку и нажми кнопку подключения.
         </Step>
-        <ActionButtons onScreenshots={handleScreenshots} />
       </div>
     ),
     androidtv: (
       <div className="flex flex-col gap-3">
         <Step n={1}>
-          <strong>Установка:</strong> Установи Happ из{" "}
-          <ExternalLink href="https://play.google.com/store/apps/details?id=com.happproxy">Google Play</ExternalLink> или <ExternalLink href="https://disk.yandex.ru/d/u_d6cVaTVnyWuw">Скачай APK</ExternalLink>.
+          Установи Happ из{" "}
+          <ExternalLink href="https://play.google.com/store/apps/details?id=com.happproxy">Google Play</ExternalLink> или <ExternalLink href="https://disk.yandex.ru/d/u_d6cVaTVnyWuw">скачай APK</ExternalLink>.
         </Step>
         <Step n={2}>
-          <strong>Подготовка:</strong> Запусти приложение на ТВ — на экране появится QR-код.
+          Запусти приложение на ТВ — на экране появится QR-код.
         </Step>
         <Step n={3}>
-          <strong>Передача:</strong> Открой Happ на смартфоне, отсканируй этот QR-код, выдели нужную подписку и нажми кнопку «Передать».
+          Открой Happ на смартфоне, отсканируй этот QR-код, выдели нужную подписку и нажми кнопку «Передать».
         </Step>
         <Step n={4}>
-          <strong>Запуск:</strong> На ТВ выбери полученную подписку и нажми кнопку подключения.
+          На ТВ выбери полученную подписку и нажми кнопку подключения.
         </Step>
-        <ActionButtons onScreenshots={handleScreenshots} />
       </div>
     ),
   };
@@ -498,36 +494,34 @@ const Instructions = () => {
   const mobileAndroidSimplified = (
     <div className="flex flex-col gap-3">
       <Step n={1}>
-        <strong>Установка:</strong>{" "}
+        Установи Happ из{" "}
         <ExternalLink href="https://play.google.com/store/apps/details?id=com.happproxy">Google Play</ExternalLink>{" "}
         или{" "}
-        <ExternalLink href="https://disk.yandex.ru/d/u_d6cVaTVnyWuw">Скачай APK</ExternalLink>.
+        <ExternalLink href="https://disk.yandex.ru/d/u_d6cVaTVnyWuw">скачай APK</ExternalLink>.
       </Step>
       <Step n={2}>
-        <strong>Настройка:</strong> нажми кнопку
+        Нажми кнопку
         <OneClickAddButton subscriptionUrl={subscriptionUrl} />
       </Step>
       <Step n={3}>
-        <strong>Запуск:</strong> выбери сервер и нажми кнопку подключения.
+        Выбери сервер и нажми кнопку подключения.
       </Step>
-      <ActionButtons onScreenshots={handleScreenshots} />
     </div>
   );
 
   const mobileIosSimplified = (
     <div className="flex flex-col gap-3">
       <Step n={1}>
-        <strong>Установка:</strong> установи{" "}
+        Установи{" "}
         <ExternalLink href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973">Happ</ExternalLink> из App Store.
       </Step>
       <Step n={2}>
-        <strong>Настройка:</strong> нажми кнопку
+        Нажми кнопку
         <OneClickAddButton subscriptionUrl={subscriptionUrl} />
       </Step>
       <Step n={3}>
-        <strong>Запуск:</strong> выбери сервер и нажми кнопку подключения.
+        Выбери сервер и нажми кнопку подключения.
       </Step>
-      <ActionButtons onScreenshots={handleScreenshots} />
     </div>
   );
 
@@ -642,16 +636,16 @@ const Instructions = () => {
 
       {/* QR dialog */}
       <Dialog open={qrOpen} onOpenChange={setQrOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="dash-modal sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>QR-Code подписки</DialogTitle>
             <DialogDescription>
-              Откройте приложение Happ, нажмите кнопку QR-Code в правом нижнем углу и отскануйте данный код.
+              Откройте приложение Happ, нажмите кнопку QR-Code в правом нижнем углу и отсканируйте данный код.
             </DialogDescription>
           </DialogHeader>
           {subscriptionUrl ? (
-            <div className="flex flex-col items-center gap-3 pt-2">
-              <div className="rounded-xl bg-white p-4 ring-1 ring-border">
+            <div className="dash-modal__stack items-center">
+              <div className="dash-modal__qr">
                 <img
                   alt="QR-Code"
                   className="h-52 w-52"
@@ -660,12 +654,16 @@ const Instructions = () => {
                   )}`}
                 />
               </div>
-              <Button variant="outline" className="w-full" onClick={() => setQrOpen(false)}>
+              <button
+                type="button"
+                className="dash-modal-btn dash-modal-btn--ghost"
+                onClick={() => setQrOpen(false)}
+              >
                 Закрыть
-              </Button>
+              </button>
             </div>
           ) : (
-            <p className="pt-2 text-sm text-muted-foreground">Ссылка подписки недоступна</p>
+            <p className="dash-modal__empty">Ссылка подписки недоступна</p>
           )}
         </DialogContent>
       </Dialog>

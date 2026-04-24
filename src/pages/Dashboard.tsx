@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import {
   Smartphone,
   CalendarClock,
-  Trash2,
+  Trash,
   Loader2,
   HelpCircle,
   Gift,
@@ -31,7 +31,6 @@ import {
   setVpnTalkmeProfileJson,
   VPN_STORAGE_KEY_PREFIX,
 } from "@/lib/vpnStorage";
-import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { oneClickHappUrl, isInstructionsPlatform, type InstructionsPlatform } from "@/lib/happ";
@@ -748,7 +747,7 @@ const Dashboard = () => {
                   onClick={() => navigate("/tariff")}
                 >
                   <ShoppingCart className="h-5 w-5" aria-hidden="true" />
-                  {isExpired ? "Продлить подписку" : "Сменить тариф"}
+                  Продлить подписку
                 </button>
                 <span className="dash-hero__hint">
                   {isExpired
@@ -941,59 +940,57 @@ const Dashboard = () => {
 
       {/* Devices Modal */}
       <Dialog open={devicesOpen} onOpenChange={setDevicesOpen}>
-        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
+        <DialogContent className="dash-modal max-h-[80vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Подключённые устройства</DialogTitle>
-            <DialogDescription className="space-y-2">
-              <span className="block">Список HWID устройств, подключённых к вашему аккаунту.</span>
-              <span className="block text-foreground">
-                Внимание: удаление устройства не лишает его доступа к аккаунту — так вы освобождаете слот для другого
-                устройства. Если необходимо ограничить доступ с других устройств, смените ссылку подключения в меню
-                «Другое».
-              </span>
+            <DialogDescription asChild>
+              <div className="space-y-2">
+                <p>Здесь показаны устройства по HWID, привязанные к вашей учётной записи.</p>
+                <p className="dash-modal__desc-accent">
+                  Важно: убрав устройство из списка, вы не отключаете его от аккаунта — только освобождаете слот под другое
+                  устройство. Чтобы ограничить доступ с посторонних устройств, обновите ссылку подключения в меню «Другое».
+                </p>
+              </div>
             </DialogDescription>
           </DialogHeader>
 
           {devicesLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <div className="dash-modal__loader">
+              <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : devices.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Нет подключённых устройств</p>
+            <p className="dash-modal__empty">Нет подключённых устройств</p>
           ) : (
-            <div className="flex flex-col gap-3 divide-y divide-border">
+            <div className="dash-modal__stack">
               {devices.map((device) => (
-                <div
-                  key={device.hwid}
-                  className="flex items-start justify-between gap-3 rounded-lg bg-muted p-3 pt-4 first:pt-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold text-foreground">HWID: {device.hwid || "—"}</p>
+                <div key={device.hwid} className="dash-modal__item">
+                  <div className="dash-modal__item-meta">
+                    <p className="dash-modal__item-title">HWID: {device.hwid || "—"}</p>
                     {device.platform && (
-                      <p className="mt-1 text-xs text-muted-foreground">
+                      <p className="dash-modal__item-sub">
                         {device.platform} {device.osVersion} — {device.deviceModel}
                       </p>
                     )}
                     {device.userAgent && (
-                      <p className="mt-1 truncate text-xs text-muted-foreground">{device.userAgent}</p>
+                      <p className="dash-modal__item-sub truncate">{device.userAgent}</p>
                     )}
                     {device.createdAt && (
-                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(device.createdAt)}</p>
+                      <p className="dash-modal__item-sub">{formatDate(device.createdAt)}</p>
                     )}
                   </div>
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    className="h-8 w-8 shrink-0"
+                  <button
+                    type="button"
+                    className="dash-modal__item-remove"
                     disabled={deletingHwid === device.hwid}
                     onClick={() => handleDeleteDevice(device.hwid)}
+                    aria-label="Удалить устройство"
                   >
                     {deletingHwid === device.hwid ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <Trash2 className="h-4 w-4" />
+                      <Trash className="h-4 w-4" />
                     )}
-                  </Button>
+                  </button>
                 </div>
               ))}
             </div>
@@ -1002,30 +999,34 @@ const Dashboard = () => {
       </Dialog>
 
       <Dialog open={subscriptionQrOpen} onOpenChange={setSubscriptionQrOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="dash-modal sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>QR-Code подписки</DialogTitle>
             <DialogDescription>
-              Откройте приложение Happ, нажмите кнопку QR-Code в правом нижнем углу и отскануйте данный код.
+              Откройте приложение Happ, нажмите кнопку QR-Code в правом нижнем углу и отсканируйте данный код.
             </DialogDescription>
           </DialogHeader>
           {(() => {
             const qrUrl = resolveSubscriptionUrl();
             if (!qrUrl) {
-              return <p className="pt-2 text-sm text-muted-foreground">Ссылка подписки недоступна</p>;
+              return <p className="dash-modal__empty">Ссылка подписки недоступна</p>;
             }
             return (
-              <div className="flex flex-col items-center gap-3 pt-2">
-                <div className="rounded-xl bg-white p-4 ring-1 ring-border">
+              <div className="dash-modal__stack items-center">
+                <div className="dash-modal__qr">
                   <img
                     alt="QR-Code"
                     className="h-52 w-52"
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrUrl)}`}
                   />
                 </div>
-                <Button variant="outline" className="w-full" onClick={() => setSubscriptionQrOpen(false)}>
+                <button
+                  type="button"
+                  className="dash-modal-btn dash-modal-btn--ghost"
+                  onClick={() => setSubscriptionQrOpen(false)}
+                >
                   Закрыть
-                </Button>
+                </button>
               </div>
             );
           })()}
@@ -1034,11 +1035,11 @@ const Dashboard = () => {
 
       {/* Traffic Info Modal */}
       <Dialog open={trafficInfoOpen} onOpenChange={setTrafficInfoOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="dash-modal sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Информация о трафике</DialogTitle>
+            <DialogTitle>Учёт трафика</DialogTitle>
             <DialogDescription>
-              Трафик тарифицируется только на LTE-серверах. На всех остальных он безлимитный.
+              Платно по трафику — только на LTE-серверах; на остальных площадках он не ограничен.
             </DialogDescription>
           </DialogHeader>
         </DialogContent>
@@ -1052,7 +1053,7 @@ const Dashboard = () => {
           if (!open) setTrafficPaymentStep(null);
         }}
       >
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="dash-modal sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{trafficPaymentStep ? "Выберите способ оплаты" : "Купить трафик"}</DialogTitle>
             <DialogDescription>
@@ -1061,16 +1062,16 @@ const Dashboard = () => {
                 : "Выберите пакет трафика"}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-3 pt-2">
+          <div className="dash-modal__stack">
             {!trafficPaymentStep ? (
               [
                 { gb: 20, price: productPriceByKey.get("traffic_20gb") ?? null },
                 { gb: 50, price: productPriceByKey.get("traffic_50gb") ?? null },
               ].map((opt) => (
-                <Button
+                <button
                   key={opt.gb}
-                  variant="outline"
-                  className="w-full justify-between py-6 text-base font-semibold group"
+                  type="button"
+                  className="dash-modal-btn dash-modal-btn--ghost dash-modal-btn--split"
                   onClick={() => {
                     if (typeof opt.price !== "number") {
                       toast.error("Не удалось загрузить цену пакета");
@@ -1080,24 +1081,28 @@ const Dashboard = () => {
                   }}
                 >
                   <span>{opt.gb} ГБ</span>
-                  <span className="text-primary group-hover:text-white">{opt.price ?? "—"} ₽</span>
-                </Button>
+                  <span className="dash-modal-btn__price">{opt.price ?? "—"} ₽</span>
+                </button>
               ))
             ) : (
               <>
-                <Button variant="ghost" size="sm" className="mb-1 w-fit" onClick={() => setTrafficPaymentStep(null)}>
+                <button
+                  type="button"
+                  className="dash-modal-btn dash-modal-btn--back"
+                  onClick={() => setTrafficPaymentStep(null)}
+                >
                   ← Назад
-                </Button>
+                </button>
                 {paymentMethods.map((method) => (
-                  <Button
+                  <button
                     key={method.id}
-                    variant="outline"
-                    className="w-full justify-center py-6 text-base font-semibold"
+                    type="button"
+                    className="dash-modal-btn dash-modal-btn--ghost"
                     disabled={paymentLoading !== null}
                     onClick={() => handleTrafficPayment(method.id)}
                   >
                     {paymentLoading === method.id ? <Loader2 className="h-5 w-5 animate-spin" /> : method.label}
-                  </Button>
+                  </button>
                 ))}
               </>
             )}
@@ -1106,90 +1111,96 @@ const Dashboard = () => {
       </Dialog>
       {/* Other Menu Modal */}
       <Dialog open={otherMenuOpen} onOpenChange={setOtherMenuOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="dash-modal sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Другое</DialogTitle>
             <DialogDescription>Выберите действие</DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-3 pt-2">
-            <Button
-              variant="outline"
-              className="w-full justify-start gap-3 py-5 text-base"
+          <div className="dash-modal__stack">
+            <button
+              type="button"
+              className="dash-modal-btn dash-modal-btn--ghost dash-modal-btn--menu"
               onClick={() => {
                 setOtherMenuOpen(false);
                 setReferralOpen(true);
               }}
             >
-              <Gift className="h-5 w-5 text-primary" /> Реферальная программа
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start gap-3 py-5 text-base"
+              <Gift className="h-5 w-5" />
+              Реферальная программа
+            </button>
+            <button
+              type="button"
+              className="dash-modal-btn dash-modal-btn--ghost dash-modal-btn--menu"
               onClick={() => {
                 setOtherMenuOpen(false);
                 setPromoOpen(true);
               }}
             >
-              <Tag className="h-5 w-5 text-primary" /> Промокод
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start gap-3 py-5 text-base"
+              <Tag className="h-5 w-5" />
+              Промокод
+            </button>
+            <button
+              type="button"
+              className="dash-modal-btn dash-modal-btn--ghost dash-modal-btn--menu"
               onClick={() => {
                 setOtherMenuOpen(false);
                 setAboutOpen(true);
               }}
             >
-              <Info className="h-5 w-5 text-primary" /> О нас
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start gap-3 py-5 text-base"
+              <Info className="h-5 w-5" />
+              О нас
+            </button>
+            <button
+              type="button"
+              className="dash-modal-btn dash-modal-btn--ghost dash-modal-btn--menu"
               onClick={() => {
                 setOtherMenuOpen(false);
                 window.open("https://t.me/vpn220v_bot", "_blank", "noopener,noreferrer");
               }}
             >
-              <Send className="h-5 w-5 text-primary" /> Telegram-бот
-            </Button>
-            <Button
-              variant="destructive"
-              className="w-full justify-start gap-3 py-5 text-base hover:bg-red-900"
+              <Send className="h-5 w-5" />
+              Telegram-бот
+            </button>
+            <button
+              type="button"
+              className="dash-modal-btn dash-modal-btn--danger dash-modal-btn--menu"
               onClick={handleLogout}
             >
-              <LogOut className="h-5 w-5" /> Выход
-            </Button>
+              <LogOut className="h-5 w-5" />
+              Выход
+            </button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Referral Modal */}
       <Dialog open={referralOpen} onOpenChange={setReferralOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="dash-modal sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Реферальная программа</DialogTitle>
             <DialogDescription>Бонусные дни за друга, коллегу, родственника</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 pt-2 text-sm text-foreground">
+          <div className="dash-modal__stack" style={{ gap: 16 }}>
             <p>
               За каждого, кто зарегистрировался по вашей ссылке и оплатил подписку, вы получите{" "}
-              <span className="font-bold text-primary">+7 дней</span> на ваш аккаунт!
+              <span style={{ color: "var(--dm-accent)", fontWeight: 800 }}>+7 дней</span> на ваш аккаунт!
             </p>
-            <div className="rounded-lg bg-card p-4 ring-1 ring-border">
-              <p className="mb-2 text-xs text-muted-foreground">Ваша уникальная ссылка:</p>
+            <div className="dash-modal__panel">
+              <span className="dash-modal__panel-label">Ваша уникальная ссылка</span>
               <button
+                type="button"
                 onClick={() => {
                   navigator.clipboard.writeText("Ссылка временно недоступна");
                   toast.success("Ссылка скопирована!");
                 }}
-                className="w-full break-all rounded-md bg-primary/10 px-3 py-2 text-left text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
+                className="dash-modal__copy"
               >
                 Ссылка временно недоступна
               </button>
-              <p className="mt-2 text-xs text-muted-foreground text-center">(нажмите, чтобы скопировать)</p>
+              <p className="dash-modal__panel-hint">(нажмите, чтобы скопировать)</p>
             </div>
-            <p className="text-center text-sm text-muted-foreground">
-              Сколько зарегистрированных по вашей ссылке: <span className="font-bold text-foreground">0</span>
+            <p className="dash-modal__stats">
+              Сколько зарегистрированных по вашей ссылке: <strong>0</strong>
             </p>
           </div>
         </DialogContent>
@@ -1197,96 +1208,106 @@ const Dashboard = () => {
 
       {/* Promo Code Modal */}
       <Dialog open={promoOpen} onOpenChange={setPromoOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="dash-modal sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Промокод</DialogTitle>
             <DialogDescription>Введите промокод чтобы активировать бонусы</DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-3 pt-2">
+          <div className="dash-modal__stack">
             <input
               type="text"
               value={promoCode}
               onChange={(e) => setPromoCode(e.target.value)}
               placeholder="Введите промокод"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="dash-modal__input"
             />
-            <Button className="w-full" onClick={() => toast.info("Промокод можно активировать в Telegram-боте")}>
+            <button
+              type="button"
+              className="dash-modal-btn dash-modal-btn--primary"
+              onClick={() => toast.info("Промокод можно активировать в Telegram-боте")}
+            >
               Активировать
-            </Button>
+            </button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* About Us Modal */}
       <Dialog open={aboutOpen} onOpenChange={setAboutOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
+        <DialogContent className="dash-modal max-h-[85vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>О нас</DialogTitle>
             <DialogDescription className="sr-only">
               220v — быстрый и безопасный VPN. Условия, скорость, безопасность сервиса.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-5 pt-2 text-sm text-foreground">
-            <p className="text-base font-semibold leading-snug">220v — быстрый и безопасный VPN</p>
+          <div>
+            <p className="dash-modal__lead">220v — быстрый и безопасный VPN</p>
 
-            <div>
-              <p className="mb-2 text-base font-bold">📋 Условия и возможности:</p>
-              <ul className="ml-4 list-disc space-y-2 text-muted-foreground">
+            <div className="dash-modal__section">
+              <p className="dash-modal__section-title">📋 Условия и возможности</p>
+              <ul className="dash-modal__list">
                 <li>
-                  <span className="font-semibold text-foreground">Трафик:</span> 100 ГБ на серверах для мобильного
-                  интернета и полный безлимит на всех остальных локациях.
+                  <strong>Трафик:</strong> 100 ГБ на серверах для мобильного интернета и полный безлимит на всех
+                  остальных локациях.
                 </li>
                 <li>
-                  <span className="font-semibold text-foreground">Гибкость:</span> Пользуйтесь одним аккаунтом
-                  одновременно на 7 устройствах.
+                  <strong>Гибкость:</strong> Пользуйтесь одним аккаунтом одновременно на 7 устройствах.
                 </li>
                 <li>
-                  <span className="font-semibold text-foreground">Выгода:</span> На тарифах 6 и 12 месяцев купленный
-                  дополнительный трафик для мобильных серверов не сгорает и переносится на следующий месяц.
+                  <strong>Выгода:</strong> На тарифах 6 и 12 месяцев купленный дополнительный трафик для мобильных
+                  серверов не сгорает и переносится на следующий месяц.
                 </li>
                 <li>
-                  <span className="font-semibold text-foreground">Доступность:</span> Прозрачные тарифы, бесплатный
-                  тест-драйв и старт в один клик.
+                  <strong>Доступность:</strong> Прозрачные тарифы, бесплатный тест-драйв и старт в один клик.
                 </li>
               </ul>
             </div>
 
-            <div>
-              <p className="mb-2 text-base font-bold">🚀 Скорость и технологии:</p>
-              <ul className="ml-4 list-disc space-y-2 text-muted-foreground">
+            <div className="dash-modal__section">
+              <p className="dash-modal__section-title">🚀 Скорость и технологии</p>
+              <ul className="dash-modal__list">
                 <li>Потоковое видео в 4K и загрузка до 1 Гбит/с.</li>
                 <li>Прямые каналы через европейские дата-центры для минимального пинга.</li>
                 <li>Работа на базе самых современных сетевых протоколов.</li>
               </ul>
             </div>
 
-            <div>
-              <p className="mb-2 text-base font-bold">🔐 Безопасность и этика:</p>
-              <ul className="ml-4 list-disc space-y-2 text-muted-foreground">
+            <div className="dash-modal__section">
+              <p className="dash-modal__section-title">🔐 Безопасность и этика</p>
+              <ul className="dash-modal__list">
                 <li>
-                  <span className="font-semibold text-foreground">Строгая политика No-Logs:</span> мы не храним историю
-                  ваших действий.
+                  <strong>Строгая политика No-Logs:</strong> мы не храним историю ваших действий.
                 </li>
                 <li>Мощное шифрование и полная защита от утечек данных.</li>
                 <li>Никакого спама, баннеров и слежки — только чистый интернет.</li>
                 <li>Команда заботы, готовая прийти на помощь 24/7.</li>
               </ul>
             </div>
-            <div className="flex flex-col gap-2 pt-2">
-              <a href="/terms" target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" className="w-full text-sm">
-                  Условия использования
-                </Button>
+            <div className="dash-modal__stack" style={{ marginTop: 22 }}>
+              <a
+                href="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="dash-modal-btn dash-modal-btn--ghost"
+              >
+                Условия использования
               </a>
-              <a href="/terms" target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" className="w-full text-sm">
-                  Пользовательское соглашение
-                </Button>
+              <a
+                href="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="dash-modal-btn dash-modal-btn--ghost"
+              >
+                Пользовательское соглашение
               </a>
-              <a href="/policy" target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" className="w-full text-sm">
-                  Политика конфиденциальности
-                </Button>
+              <a
+                href="/policy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="dash-modal-btn dash-modal-btn--ghost"
+              >
+                Политика конфиденциальности
               </a>
             </div>
           </div>
