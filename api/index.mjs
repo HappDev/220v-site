@@ -282,7 +282,7 @@ function getBillingRedirectUrls() {
   const success = process.env.BILLING_SUCCESS_URL?.trim();
   const cancel = process.env.BILLING_CANCEL_URL?.trim();
   if (success && cancel) return { successUrl: success, cancelUrl: cancel };
-  const base = (process.env.PUBLIC_SITE_URL?.trim() || "https://letovpn.org").replace(/\/$/, "");
+  const base = (process.env.PUBLIC_SITE_URL?.trim() || "https://www.220v.org").replace(/\/$/, "");
   return {
     successUrl: `${base}/pay/success`,
     cancelUrl: `${base}/pay/fail`,
@@ -928,7 +928,7 @@ const TALKME_API_BASE = "https://lcab.talk-me.ru/json/v1.0";
  * последующих `client-search`.
  */
 function syntheticClientIdFromEmail(email) {
-  const normalized = `letovpn:${String(email || "").trim().toLowerCase()}`;
+  const normalized = `220v:${String(email || "").trim().toLowerCase()}`;
   return createHash("sha256").update(normalized).digest("hex").slice(0, 32);
 }
 

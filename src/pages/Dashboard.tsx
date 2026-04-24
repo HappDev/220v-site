@@ -669,9 +669,37 @@ const Dashboard = () => {
         <DashboardSidebar items={[]} onLogout={handleLogout} />
         <main className="app-page">
           <div className="container">
-            <div className="app-page__notice">
-              <p>Загружаем ваш личный кабинет и данные подписки.</p>
-              <div className="app-page__meta">Пожалуйста, подождите…</div>
+            <div className="app-page__notice app-page__notice--loader">
+              <div
+                className="bolt-loader"
+                role="status"
+                aria-label="Загружаем ваш личный кабинет"
+              >
+                <svg
+                  viewBox="0 0 64 96"
+                  className="bolt-loader__svg"
+                  aria-hidden="true"
+                >
+                  <defs>
+                    <clipPath id="bolt-loader-clip">
+                      <path d="M38 2 L8 52 h18 l-6 42 L58 36 h-18 l6 -34 Z" />
+                    </clipPath>
+                  </defs>
+                  <path
+                    d="M38 2 L8 52 h18 l-6 42 L58 36 h-18 l6 -34 Z"
+                    className="bolt-loader__outline"
+                  />
+                  <g clipPath="url(#bolt-loader-clip)">
+                    <rect
+                      x="0"
+                      y="0"
+                      width="64"
+                      height="96"
+                      className="bolt-loader__fill"
+                    />
+                  </g>
+                </svg>
+              </div>
             </div>
           </div>
         </main>

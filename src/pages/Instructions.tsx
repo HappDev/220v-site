@@ -99,12 +99,12 @@ function detectInstructionsClient(): InstructionsClient {
 }
 
 const platforms: { id: Platform; label: string; icon: React.ReactNode }[] = [
-  { id: "android", label: "Android", icon: <Smartphone className="h-5 w-5" /> },
-  { id: "ios", label: "iOS / macOS", icon: <Apple className="h-5 w-5" /> },
-  { id: "windows", label: "Windows", icon: <Monitor className="h-5 w-5" /> },
-  { id: "linux", label: "Linux", icon: <Terminal className="h-5 w-5" /> },
-  { id: "appletv", label: "Apple TV", icon: <Tv className="h-5 w-5" /> },
-  { id: "androidtv", label: "Android TV", icon: <Tv className="h-5 w-5" /> },
+  { id: "android", label: "Android", icon: <Smartphone className="h-3.5 w-3.5" /> },
+  { id: "ios", label: "iOS / macOS", icon: <Apple className="h-3.5 w-3.5" /> },
+  { id: "windows", label: "Windows", icon: <Monitor className="h-3.5 w-3.5" /> },
+  { id: "linux", label: "Linux", icon: <Terminal className="h-3.5 w-3.5" /> },
+  { id: "appletv", label: "Apple TV", icon: <Tv className="h-3.5 w-3.5" /> },
+  { id: "androidtv", label: "Android TV", icon: <Tv className="h-3.5 w-3.5" /> },
 ];
 
 const screenshotsByPlatform: Partial<Record<Platform, string[]>> = {
@@ -584,7 +584,7 @@ const Instructions = () => {
                               <span className="flex items-center gap-2">
                                 {React.cloneElement(
                                   p.icon as React.ReactElement<{ className?: string }>,
-                                  { className: "h-4 w-4 shrink-0" },
+                                  { className: "h-3.5 w-3.5 shrink-0" },
                                 )}
                                 {p.label}
                               </span>

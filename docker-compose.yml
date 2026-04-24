@@ -6,7 +6,7 @@ services:
     env_file:
       - .env
     volumes:
-      - "${SUPPORT_CHAT_UPLOADS_HOST_DIR:-/home/sony/letovpn/support-chat-uploads}:${SUPPORT_CHAT_UPLOADS_DIR:-/app/uploads/support-chat}"
+      - "${SUPPORT_CHAT_UPLOADS_HOST_DIR:-/home/sony/220v/support-chat-uploads}:${SUPPORT_CHAT_UPLOADS_DIR:-/app/uploads/support-chat}"
     expose:
       - "3001"
     restart: unless-stopped
