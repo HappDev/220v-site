@@ -1151,13 +1151,13 @@ body.landing-no-scroll { overflow: hidden; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
+  padding: 14px;
   overflow: visible;
 }
 .landing-root .bolt-loader__svg {
   display: block;
-  width: 88px;
-  height: auto;
+  width: 96px;
+  height: 132px;
   overflow: visible;
 }
 .landing-root .bolt-loader__outline {

@@ -676,18 +676,18 @@ const Dashboard = () => {
                 aria-label="Загружаем ваш личный кабинет"
               >
                 <svg
-                  viewBox="-12 -10 88 116"
+                  viewBox="-16 -18 96 132"
                   className="bolt-loader__svg"
                   aria-hidden="true"
                   preserveAspectRatio="xMidYMid meet"
                 >
                   <defs>
                     <clipPath id="bolt-loader-clip">
-                      <path d="M38 2 L8 52 h18 l-6 42 L58 36 h-18 l6 -34 Z" />
+                      <path d="M47 -6 L8 54 h18 l-6 42 L60 34 H42 Z" />
                     </clipPath>
                   </defs>
                   <path
-                    d="M38 2 L8 52 h18 l-6 42 L58 36 h-18 l6 -34 Z"
+                    d="M47 -6 L8 54 h18 l-6 42 L60 34 H42 Z"
                     className="bolt-loader__outline"
                   />
                   <g clipPath="url(#bolt-loader-clip)">
