@@ -1,12 +1,10 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, type ReactNode } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
-  Crown,
   Smartphone,
   CalendarClock,
   Trash2,
   Loader2,
-  Activity,
   HelpCircle,
   Gift,
   Tag,
@@ -127,6 +125,54 @@ function formatBytes(bytes: number): string {
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
   return (bytes / Math.pow(1024, i)).toFixed(1) + " " + units[i];
 }
+
+/** Русская плюральная форма для «день/дня/дней». */
+function pluralDays(n: number): string {
+  const abs = Math.abs(Math.round(n)) % 100;
+  const last = abs % 10;
+  if (abs > 10 && abs < 20) return "дней";
+  if (last === 1) return "день";
+  if (last >= 2 && last <= 4) return "дня";
+  return "дней";
+}
+
+type RingProps = {
+  /** Заполненная доля кольца в диапазоне 0..100. */
+  percent: number;
+  size?: "lg" | "md";
+  danger?: boolean;
+  children?: ReactNode;
+  ariaLabel?: string;
+};
+
+/** Круговой индикатор прогресса на SVG. Заполнение = accent/зелёное, danger = красный. */
+const Ring = ({ percent, size = "lg", danger, children, ariaLabel }: RingProps) => {
+  const RADIUS = 60;
+  const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+  const clamped = Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : 0));
+  const offset = CIRCUMFERENCE * (1 - clamped / 100);
+
+  return (
+    <div
+      className={`dash-ring${size === "md" ? " dash-ring--md" : ""}${danger ? " dash-ring--danger" : ""}`}
+      role="img"
+      aria-label={ariaLabel}
+    >
+      <svg className="dash-ring__svg" viewBox="0 0 140 140" aria-hidden="true">
+        <circle className="dash-ring__track" cx="70" cy="70" r={RADIUS} />
+        <circle
+          className="dash-ring__bar"
+          cx="70"
+          cy="70"
+          r={RADIUS}
+          strokeDasharray={CIRCUMFERENCE}
+          strokeDashoffset={offset}
+        />
+      </svg>
+      <div className="dash-ring__content">{children}</div>
+    </div>
+  );
+};
 
 /** Сохраняется при уходе с /dashboard?… без сессии, чтобы после входа открыть тот же deep link */
 const DASHBOARD_PENDING_SEARCH_KEY = "vpn_dashboard_pending_search";
@@ -536,9 +582,13 @@ const Dashboard = () => {
     });
   };
 
-  const trafficPercent = userData?.trafficLimitBytes
-    ? Math.min(100, Math.round(((userData.usedTrafficBytes ?? 0) / userData.trafficLimitBytes) * 100))
+  const trafficLimitBytes = userData?.trafficLimitBytes ?? 0;
+  const usedTrafficBytes = userData?.usedTrafficBytes ?? 0;
+  const hasTrafficLimit = trafficLimitBytes > 0;
+  const trafficPercent = hasTrafficLimit
+    ? Math.min(100, Math.round((usedTrafficBytes / trafficLimitBytes) * 100))
     : 0;
+  const remainingBytes = Math.max(0, trafficLimitBytes - usedTrafficBytes);
   const tariffLc = (userData?.tariff ?? "").toLowerCase();
   const planLc = (userData?.plan ?? "").toLowerCase();
   const paidTariffCodes = new Set(["1month", "6month", "12month"]);
@@ -548,7 +598,18 @@ const Dashboard = () => {
     planLc === "premium" ||
     paidPlanLabels.includes(planLc);
   const isExpired = (userData?.status ?? "").toUpperCase() === "EXPIRED";
-  const isTrafficExhausted = (userData?.trafficLimitBytes ?? 0) > 0 && (userData?.usedTrafficBytes ?? 0) >= (userData?.trafficLimitBytes ?? 0);
+  const isTrafficExhausted = hasTrafficLimit && usedTrafficBytes >= trafficLimitBytes;
+  const daysLeft = Math.max(0, userData?.daysLeft ?? 0);
+  const usedDays = Math.max(0, userData?.usedDays ?? 0);
+  const totalDays = usedDays + daysLeft;
+  // Доля оставшихся дней (для кольца в hero). 100% = подписка только куплена; 0% = истекла.
+  const daysRemainingPercent = isExpired
+    ? 0
+    : totalDays > 0
+      ? Math.max(0, Math.min(100, Math.round((daysLeft / totalDays) * 100)))
+      : 0;
+  const currentDevices = userData?.currentDevices ?? 0;
+  const devicesLimit = userData?.devicesLimit ?? 0;
 
   const sidebarItems: DashboardSidebarItem[] = [
     {
@@ -646,130 +707,231 @@ const Dashboard = () => {
       <main>
         <section className="app-page">
           <div className="container">
-            <div className="app-page__hero app-page__hero--dashboard">
-              <div className="app-page__panel">
-                <div className="app-page__eyebrow">Личный кабинет 220v</div>
-                <h1 className="app-page__title">Управляйте подпиской, устройствами и трафиком в одном месте.</h1>
-                <p className="app-page__subtitle">
-                  Здесь собраны ключевые данные по вашему тарифу, подключённым устройствам и доступу к сервису.
-                </p>
-                <div className="app-page__meta">{email}</div>
+            <header className="dash-topbar">
+              <div className="dash-topbar__lead">
+                <div className="dash-topbar__kicker">Личный кабинет 220v</div>
+                <h1 className="dash-topbar__title">С возвращением</h1>
+                {email ? <div className="dash-topbar__email">{email}</div> : null}
+              </div>
+              <span
+                className={`dash-badge ${isExpired ? "dash-badge--danger" : "dash-badge--ok"}`}
+              >
+                {isExpired ? "Подписка истекла" : "Подписка активна"}
+              </span>
+            </header>
 
-                <div className="app-grid app-grid--stats">
-                  <div className={`app-stat ${isExpired ? "app-stat--danger" : ""}`}>
-                    <Crown className={`h-6 w-6 ${isExpired ? "text-red-400" : "text-[#c6ff3d]"}`} />
-                    <span className="app-stat__label">Тариф</span>
-                    <span className="app-stat__value">{isExpired ? "Истёк" : userData?.plan}</span>
-                  </div>
-                  <div className={`app-stat ${isExpired ? "app-stat--danger" : ""}`}>
-                    <CalendarClock className={`h-6 w-6 ${isExpired ? "text-red-400" : "text-[#c6ff3d]"}`} />
-                    <span className="app-stat__label">Дата истечения</span>
-                    <span className="app-stat__value">{userData?.expireAt ? formatDate(userData.expireAt) : "—"}</span>
-                  </div>
-                </div>
+            <section className={`dash-hero ${isExpired ? "dash-hero--danger" : ""}`}>
+              <div className="dash-hero__info">
+                <span className="dash-hero__label">Ваш тариф</span>
+                <span className="dash-hero__plan">{isExpired ? "Истёк" : userData?.plan || "—"}</span>
+                <span className="dash-hero__date">
+                  <CalendarClock className="h-4 w-4" aria-hidden="true" />
+                  {userData?.expireAt
+                    ? `${isExpired ? "Завершился" : "Действует до"} ${formatDate(userData.expireAt)}`
+                    : "Дата окончания неизвестна"}
+                </span>
+              </div>
 
-                <div className="app-page__panel mt-6">
-                  <div className="flex items-center gap-2">
-                    <CreditCard className="h-5 w-5 text-[#c6ff3d]" />
-                    <h2 className="text-lg font-semibold">Моя подписка</h2>
+              <Ring
+                percent={daysRemainingPercent}
+                danger={isExpired}
+                ariaLabel={`Осталось ${daysLeft} ${pluralDays(daysLeft)}`}
+              >
+                <span className="dash-ring__value">{daysLeft}</span>
+                <span className="dash-ring__label">{pluralDays(daysLeft)}</span>
+              </Ring>
+
+              <div className="dash-hero__action">
+                <button
+                  type="button"
+                  className="dash-hero__cta"
+                  onClick={() => navigate("/tariff")}
+                >
+                  <ShoppingCart className="h-5 w-5" aria-hidden="true" />
+                  {isExpired ? "Продлить подписку" : "Сменить тариф"}
+                </button>
+                <span className="dash-hero__hint">
+                  {isExpired
+                    ? "Выберите тариф, чтобы вернуть доступ"
+                    : "На 6 и 12 месяцев действуют скидки"}
+                </span>
+              </div>
+            </section>
+
+            <div className="dash-grid">
+              <section className="dash-card">
+                <header className="dash-card__head">
+                  <div className="dash-card__icon" aria-hidden="true">
+                    <Link2 className="h-5 w-5" />
                   </div>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Управление подключением в приложении Happ
-                  </p>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <Button
-                      variant="outline"
-                      className="w-full justify-center gap-2 py-6 text-base font-semibold"
-                      onClick={() => openInstructions()}
-                    >
-                      <Download className="h-5 w-5" />
-                      Скачать приложение
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-center gap-2 py-6 text-base font-semibold"
+                  <div className="dash-card__head-text">
+                    <div className="dash-card__title">Подключение</div>
+                    <div className="dash-card__desc">
+                      Добавьте подписку в приложение Happ
+                    </div>
+                  </div>
+                </header>
+
+                <div className="dash-card__body">
+                  <button
+                    type="button"
+                    className="dash-card__primary"
+                    disabled={!resolveSubscriptionUrl()}
+                    onClick={() => {
+                      const url = resolveSubscriptionUrl();
+                      if (!url) {
+                        toast.error("Ссылка подписки недоступна");
+                        return;
+                      }
+                      window.location.href = oneClickHappUrl(url);
+                    }}
+                  >
+                    <Link2 className="h-5 w-5" aria-hidden="true" />
+                    Добавить в Happ
+                  </button>
+
+                  <div className="dash-actions">
+                    <button
+                      type="button"
+                      className="dash-actions__btn"
                       disabled={!resolveSubscriptionUrl()}
                       onClick={() => {
-                        const url = resolveSubscriptionUrl();
-                        if (!url) {
-                          toast.error("Ссылка подписки недоступна");
-                          return;
-                        }
-                        window.location.href = oneClickHappUrl(url);
-                      }}
-                    >
-                      <Link2 className="h-5 w-5" />
-                      Добавить подписку в приложение
-                    </Button>
-                    <Button
-                      ref={copySubscriptionButtonRef}
-                      variant="outline"
-                      className="w-full justify-center gap-2 py-6 text-base font-semibold"
-                      disabled={!resolveSubscriptionUrl()}
-                      onClick={handleCopySubscriptionLink}
-                    >
-                      <Copy className="h-5 w-5" />
-                      Скопировать подписку
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-center gap-2 py-6 text-base font-semibold"
-                      disabled={!resolveSubscriptionUrl()}
-                      onClick={() => {
-                        const url = resolveSubscriptionUrl();
-                        if (!url) {
+                        if (!resolveSubscriptionUrl()) {
                           toast.error("Ссылка подписки недоступна");
                           return;
                         }
                         setSubscriptionQrOpen(true);
                       }}
                     >
-                      <QrCode className="h-5 w-5" />
-                      QR-Code
-                    </Button>
-                  </div>
-                </div>
-
-                <button type="button" onClick={handleOpenDevices} className="app-action">
-                  <div className="app-action__row">
-                    <div className="app-action__info">
-                      <Smartphone className="h-5 w-5 text-[#c6ff3d]" />
-                      <span className="app-action__label">Устройства</span>
-                    </div>
-                    <span className="app-action__value">
-                      {userData?.currentDevices ?? 0} / {userData?.devicesLimit ?? 0}
-                    </span>
-                  </div>
-                  <p className="app-action__hint">
-                    {(userData?.currentDevices ?? 0) > 0
-                      ? "Нажмите, чтобы посмотреть и отредактировать список."
-                      : "Добавьте первое устройство через инструкции по подключению."}
-                  </p>
-                </button>
-
-                <div className={`app-progress ${isTrafficExhausted ? "app-progress--danger" : ""}`}>
-                  <div className="app-progress__row">
-                    <div className="app-progress__info">
-                      <Activity className={`h-5 w-5 ${isTrafficExhausted ? "text-red-400" : "text-[#c6ff3d]"}`} />
-                      <span className="app-progress__label">Трафик</span>
-                    </div>
-                    <span className="app-progress__meta">
-                      {formatBytes(userData?.usedTrafficBytes ?? 0)} / {formatBytes(userData?.trafficLimitBytes ?? 0)}
-                    </span>
-                  </div>
-                  <div className="app-progress__track">
-                    <div className="app-progress__bar" style={{ width: `${trafficPercent}%` }} />
-                  </div>
-                  <div className="app-progress__row">
-                    <button type="button" onClick={() => setTrafficInfoOpen(true)} className="app-progress__link">
-                      Подробнее
-                      <HelpCircle className="h-3.5 w-3.5" />
+                      <QrCode className="h-5 w-5" aria-hidden="true" />
+                      <span>QR-код</span>
                     </button>
-                    <span className="app-progress__meta">{trafficPercent}%</span>
+                    <button
+                      ref={copySubscriptionButtonRef}
+                      type="button"
+                      className="dash-actions__btn"
+                      disabled={!resolveSubscriptionUrl()}
+                      onClick={handleCopySubscriptionLink}
+                    >
+                      <Copy className="h-5 w-5" aria-hidden="true" />
+                      <span>Копировать</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="dash-actions__btn"
+                      onClick={() => openInstructions()}
+                    >
+                      <Download className="h-5 w-5" aria-hidden="true" />
+                      <span>Скачать</span>
+                    </button>
                   </div>
                 </div>
+              </section>
 
-              </div>
+              <section className="dash-card">
+                <header className="dash-card__head">
+                  <div className="dash-card__icon" aria-hidden="true">
+                    <Smartphone className="h-5 w-5" />
+                  </div>
+                  <div className="dash-card__head-text">
+                    <div className="dash-card__title">Устройства</div>
+                    <div className="dash-card__desc">Подключено к аккаунту</div>
+                  </div>
+                </header>
+
+                <div className="dash-card__body dash-card__body--center">
+                  <div className="dash-metric">
+                    <span className="dash-metric__value">{currentDevices}</span>
+                    <span className="dash-metric__limit">/ {devicesLimit}</span>
+                  </div>
+                  {devicesLimit > 0 ? (
+                    <div className="dash-dots" aria-hidden="true">
+                      {Array.from({ length: devicesLimit }).map((_, i) => (
+                        <span
+                          key={i}
+                          className={`dash-dot ${i < currentDevices ? "dash-dot--on" : ""}`}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  <p className="dash-card__hint">
+                    {currentDevices > 0
+                      ? "Управляйте списком устройств вашего аккаунта"
+                      : "Добавьте первое устройство через инструкции"}
+                  </p>
+                </div>
+
+                <div className="dash-card__footer">
+                  <button
+                    type="button"
+                    className="dash-card__footer-btn"
+                    onClick={handleOpenDevices}
+                  >
+                    <Smartphone className="h-4 w-4" aria-hidden="true" />
+                    {currentDevices > 0 ? "Управлять устройствами" : "Подключить устройство"}
+                  </button>
+                </div>
+              </section>
+
+              <section className={`dash-card ${isTrafficExhausted ? "dash-card--danger" : ""}`}>
+                <header className="dash-card__head">
+                  <div className="dash-card__icon" aria-hidden="true">
+                    <Gauge className="h-5 w-5" />
+                  </div>
+                  <div className="dash-card__head-text">
+                    <div className="dash-card__title">Трафик</div>
+                    <div className="dash-card__desc">
+                      {hasTrafficLimit ? "Остаток на LTE-серверах" : "Безлимит на всех серверах"}
+                    </div>
+                  </div>
+                </header>
+
+                <div className="dash-card__body dash-card__body--center">
+                  {hasTrafficLimit ? (
+                    <>
+                      <Ring
+                        percent={trafficPercent}
+                        size="md"
+                        danger={isTrafficExhausted}
+                        ariaLabel={`Использовано ${trafficPercent}% трафика`}
+                      >
+                        <span className="dash-ring__value">{trafficPercent}%</span>
+                        <span className="dash-ring__label">использовано</span>
+                      </Ring>
+                      <p className="dash-card__hint">
+                        Осталось <strong>{formatBytes(remainingBytes)}</strong> из{" "}
+                        <strong>{formatBytes(trafficLimitBytes)}</strong>
+                      </p>
+                    </>
+                  ) : (
+                    <div className="dash-unlim">
+                      <Gauge className="h-5 w-5" aria-hidden="true" />
+                      Без ограничений
+                    </div>
+                  )}
+                </div>
+
+                <div className="dash-card__footer dash-card__footer--split">
+                  <button
+                    type="button"
+                    className="dash-card__footer-link"
+                    onClick={() => setTrafficInfoOpen(true)}
+                  >
+                    <HelpCircle className="h-4 w-4" aria-hidden="true" />
+                    Подробнее
+                  </button>
+                  {isPremiumPlan ? (
+                    <button
+                      type="button"
+                      className="dash-card__footer-btn"
+                      onClick={() => navigate("/traffic")}
+                    >
+                      <Gauge className="h-4 w-4" aria-hidden="true" />
+                      Докупить
+                    </button>
+                  ) : null}
+                </div>
+              </section>
             </div>
           </div>
         </section>
