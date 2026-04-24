@@ -676,9 +676,10 @@ const Dashboard = () => {
                 aria-label="Загружаем ваш личный кабинет"
               >
                 <svg
-                  viewBox="0 0 64 96"
+                  viewBox="-12 -10 88 116"
                   className="bolt-loader__svg"
                   aria-hidden="true"
+                  preserveAspectRatio="xMidYMid meet"
                 >
                   <defs>
                     <clipPath id="bolt-loader-clip">

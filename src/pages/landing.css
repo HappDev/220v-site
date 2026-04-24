@@ -1105,7 +1105,8 @@ body.landing-no-scroll { overflow: hidden; }
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 220px;
+  min-height: 240px;
+  padding: 40px 28px;
   background: transparent;
   border: none;
   box-shadow: none;
@@ -1118,10 +1119,13 @@ body.landing-no-scroll { overflow: hidden; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 8px;
+  overflow: visible;
 }
 .landing-root .bolt-loader__svg {
-  width: 72px;
-  height: 108px;
+  display: block;
+  width: 88px;
+  height: auto;
   overflow: visible;
 }
 .landing-root .bolt-loader__outline {

@@ -18,7 +18,11 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
 
 body {
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -28,9 +32,14 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
-img { max-width: 100%; display: block; }
+h1, h2, h3, p { overflow-wrap: break-word; word-wrap: break-word; }
+
+img { max-width: 100%; height: auto; display: block; }
 a { color: inherit; text-decoration: none; }
 ul { list-style: none; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
@@ -160,12 +169,16 @@ main, header, footer { position: relative; z-index: 1; }
   align-items: center;
   margin-bottom: 60px;
 }
+.hero__content, .hero__visual { min-width: 0; }
 .hero__title {
-  font-size: clamp(40px, 5.2vw, 68px);
+  font-size: clamp(30px, 5.2vw, 68px);
   font-weight: 800;
   line-height: 1.05;
   letter-spacing: -1.5px;
   margin-bottom: 28px;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
 }
 .hero__desc {
   font-size: 17px;
@@ -185,17 +198,20 @@ main, header, footer { position: relative; z-index: 1; }
 .hero__mascot {
   position: relative;
   max-height: 560px;
+  max-width: 100%;
   width: auto;
+  height: auto;
   filter: drop-shadow(0 30px 60px rgba(0,0,0,0.5));
   animation: float 6s ease-in-out infinite;
 }
 .hero__mascot-glow {
   position: absolute;
-  width: 420px;
-  height: 420px;
+  width: min(420px, 80%);
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(198, 255, 61, 0.22), transparent 65%);
   filter: blur(30px);
+  pointer-events: none;
 }
 
 @keyframes float {
@@ -481,9 +497,8 @@ body.no-scroll { overflow: hidden; }
     text-align: center;
   }
   .hero__content { order: 2; }
-  .hero__visual { order: 1; min-height: 360px; }
+  .hero__visual { order: 1; min-height: 320px; }
   .hero__mascot { max-height: 380px; }
-  .hero__mascot-glow { width: 300px; height: 300px; }
   .hero__desc { margin-left: auto; margin-right: auto; }
   .hero__title br { display: none; }
   .hero__desc br { display: none; }
@@ -499,21 +514,70 @@ body.no-scroll { overflow: hidden; }
   }
   .feature:nth-child(odd) { border-right: 1px solid var(--border); }
   .feature:nth-last-child(-n+2) { border-bottom: none; }
-}
 
-@media (max-width: 960px) {
   .plans { grid-template-columns: 1fr; }
   .modal__dialog { padding: 32px 22px 24px; }
   .modal__title { font-size: 24px; }
 }
 
 @media (max-width: 520px) {
-  .hero__title { font-size: 38px; }
-  .btn--lg { padding: 14px 22px; font-size: 15px; }
+  .container { padding: 0 16px; }
+  .header { padding: 14px 0; }
+  .header__inner { gap: 8px; }
+  .logo__img { height: 60px; margin: -12px 0; }
+  .logo--footer .logo__img { height: 80px; margin: -18px 0; }
+  .burger { padding: 6px; margin-right: -6px; }
+
+  .hero { padding: 28px 0 16px; }
+  .hero__grid { gap: 12px; margin-bottom: 36px; }
+  .hero__visual { min-height: 240px; }
+  .hero__mascot { max-height: 280px; }
+  .hero__title {
+    font-size: clamp(28px, 8.5vw, 40px);
+    letter-spacing: -0.8px;
+    margin-bottom: 18px;
+  }
+  .hero__desc { font-size: 15px; margin-bottom: 24px; }
+
+  .btn { font-size: 14px; padding: 11px 18px; }
+  .btn--lg { padding: 13px 20px; font-size: 15px; }
+  .btn--ghost { padding: 9px 18px; }
+
+  .features {
+    grid-template-columns: 1fr;
+    padding: 16px 0;
+  }
+  .feature {
+    padding: 16px 4px;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+  }
+  .feature:last-child { border-bottom: none; }
+  .feature__desc br { display: none; }
+
   .modal { padding: 12px; }
-  .modal__dialog { border-radius: 20px; padding: 28px 18px 20px; }
+  .modal__dialog { border-radius: 20px; padding: 28px 16px 20px; }
   .modal__title { font-size: 22px; padding-right: 36px; }
+  .modal__subtitle { font-size: 14px; margin-bottom: 20px; }
+  .modal__body p { font-size: 15px; }
+
+  .plan { padding: 22px 18px 20px; }
   .plan__amount { font-size: 34px; }
+  .plan__currency { font-size: 20px; }
+
+  .footer { padding: 32px 0; }
+  .footer__copy { font-size: 12px; text-align: center; }
+  .footer__link { font-size: 13px; }
+}
+
+@media (max-width: 380px) {
+  .container { padding: 0 14px; }
+  .logo__img { height: 52px; margin: -10px 0; }
+  .hero__title { font-size: clamp(24px, 8vw, 32px); letter-spacing: -0.5px; }
+  .hero__desc { font-size: 14px; }
+  .btn--lg { padding: 12px 16px; font-size: 14px; gap: 8px; }
+  .plan__amount { font-size: 30px; }
+  .modal__title { font-size: 20px; }
 }
 
 /* ---------- Price page ---------- */
