@@ -37,7 +37,13 @@ const Policy = () => (
           </Link>
 
           <article className="doc__content">
-            <h1>Политика конфиденциальности 220v VPN</h1>
+            <h1>Политика конфиденциальности 220v</h1>
+
+            <p>
+              <strong>Оператор:</strong> VividAxiom LLC
+              <br />
+              <strong>Адрес:</strong> 11012 Ridgewood Dr #8, Salado, Texas(TX), 76571
+            </p>
 
             <h2>1. Общие положения</h2>
             <p>

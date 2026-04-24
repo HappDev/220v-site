@@ -37,7 +37,13 @@ const Terms = () => (
           </Link>
 
           <article className="doc__content">
-            <h1>Условия использования и Пользовательское соглашение сервиса 220v VPN</h1>
+            <h1>Условия использования и Пользовательское соглашение сервиса 220v</h1>
+
+            <p>
+              <strong>Администрация:</strong> VividAxiom LLC
+              <br />
+              <strong>Адрес:</strong> 11012 Ridgewood Dr #8, Salado, Texas(TX), 76571
+            </p>
 
             <p>
               Настоящий документ является официальным соглашением между командой <strong>220v VPN</strong>{" "}
