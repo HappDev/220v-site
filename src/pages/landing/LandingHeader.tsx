@@ -19,15 +19,23 @@ export const LandingHeader = ({ nav, cta }: LandingHeaderProps) => {
           <img src={logo220v} alt="220v" className="logo__img" />
         </Link>
 
-        <nav className={`nav${open ? " nav--open" : ""}`} aria-label="Главное меню">
+        <nav
+          className={`nav${open ? " nav--open" : ""}`}
+          aria-label="Главное меню"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) return;
+            setOpen(false);
+          }}
+        >
           {nav}
+          <div className="header__nav-cta">
+            {cta ?? (
+              <Link to="/" className="btn btn--ghost">
+                Войти
+              </Link>
+            )}
+          </div>
         </nav>
-
-        {cta ?? (
-          <Link to="/" className="btn btn--ghost">
-            Войти
-          </Link>
-        )}
 
         <button
           type="button"

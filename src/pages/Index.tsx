@@ -186,20 +186,20 @@ const Index = () => {
           <div className="container hero__grid">
             <div className="hero__content">
               <h1 className="hero__title">
-                Оставайтесь
+                Оставайтесь{" "}
                 <br />
-                <span className="accent">невидимыми</span>
+                <span className="accent">невидимыми</span>{" "}
                 <br />
-                для посторонних
+                для посторонних{" "}
                 <br />
                 с <span className="accent">220v</span>
               </h1>
               <p className="hero__desc">
-                Мы надёжно скрываем ваши данные
+                Мы надёжно скрываем ваши данные{" "}
                 <br />
-                и шифруем каждое действие в сети.
+                и шифруем каждое действие в сети.{" "}
                 <br />
-                Один сервис для безопасности
+                Один сервис для безопасности{" "}
                 <br />
                 всех ваших гаджетов.
               </p>
@@ -239,7 +239,7 @@ const Index = () => {
                 </span>
                 <h3 className="feature__title">Безопасно</h3>
                 <p className="feature__desc">
-                  Ваши данные
+                  Ваши данные{" "}
                   <br />
                   под защитой
                 </p>
@@ -252,7 +252,7 @@ const Index = () => {
                 </span>
                 <h3 className="feature__title">Быстро</h3>
                 <p className="feature__desc">
-                  Высокая скорость
+                  Высокая скорость{" "}
                   <br />
                   без ограничений
                 </p>
@@ -270,7 +270,7 @@ const Index = () => {
                 </span>
                 <h3 className="feature__title">Свободно</h3>
                 <p className="feature__desc">
-                  Доступ к любому
+                  Доступ к любому{" "}
                   <br />
                   контенту
                 </p>
@@ -289,7 +289,7 @@ const Index = () => {
                 </span>
                 <h3 className="feature__title">Всегда на связи</h3>
                 <p className="feature__desc">
-                  220v — энергия
+                  220v — энергия{" "}
                   <br />
                   свободы в интернете
                 </p>
