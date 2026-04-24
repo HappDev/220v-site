@@ -22,9 +22,7 @@ const PaySuccess = () => {
           </button>
           <button
             type="button"
-            onClick={() =>
-              navigate("/dashboard", { replace: true, state: { openInstructions: true } })
-            }
+            onClick={() => navigate("/instructions", { replace: true })}
             className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary py-3 text-center text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
           >
             <BookOpen className="h-4 w-4" />

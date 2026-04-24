@@ -36,10 +36,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import InstructionsModal, { oneClickHappUrl, type InstructionsPlatform } from "@/components/InstructionsModal";
+import { oneClickHappUrl, isInstructionsPlatform, type InstructionsPlatform } from "@/lib/happ";
 import LandingShell from "@/pages/landing/LandingShell";
 import LandingFooter from "@/pages/landing/LandingFooter";
 import DashboardSidebar, { type DashboardSidebarItem } from "@/components/DashboardSidebar";
+import { SIDEBAR_SHOW_OTHER } from "@/hooks/useDashboardSidebarItems";
 
 interface UserData {
   plan: string;
@@ -139,11 +140,8 @@ const Dashboard = () => {
   const [devices, setDevices] = useState<HwidDevice[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
   const [deletingHwid, setDeletingHwid] = useState<string | null>(null);
-  const [tariffOpen, setTariffOpen] = useState(false);
   const [trafficInfoOpen, setTrafficInfoOpen] = useState(false);
-  const [selectedMonths, setSelectedMonths] = useState<number | null>(null);
   const [paymentLoading, setPaymentLoading] = useState<number | null>(null);
-  const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [trafficBuyOpen, setTrafficBuyOpen] = useState(false);
   const [trafficPaymentStep, setTrafficPaymentStep] = useState<{ gb: number; price: number } | null>(null);
   const [otherMenuOpen, setOtherMenuOpen] = useState(false);
@@ -151,29 +149,27 @@ const Dashboard = () => {
   const [promoOpen, setPromoOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [promoCode, setPromoCode] = useState("");
-  const [mySubscriptionOpen, setMySubscriptionOpen] = useState(false);
   const [subscriptionQrOpen, setSubscriptionQrOpen] = useState(false);
-  const [instructionsInitialPlatform, setInstructionsInitialPlatform] = useState<
-    InstructionsPlatform | undefined
-  >(undefined);
   const copySubscriptionButtonRef = useRef<HTMLButtonElement>(null);
 
   const navigate = useNavigate();
   const location = useLocation();
 
-  const openInstructions = useCallback((platform?: InstructionsPlatform) => {
-    setInstructionsInitialPlatform(platform);
-    setInstructionsOpen(true);
-  }, []);
+  const openInstructions = useCallback(
+    (platform?: InstructionsPlatform) => {
+      const search = platform ? `?platform=${platform}` : "";
+      navigate(`/instructions${search}`);
+    },
+    [navigate],
+  );
 
+  // Обратная совместимость: state.openInstructions от страниц вроде /pay/success
+  // теперь редиректит на отдельную страницу /instructions.
   useEffect(() => {
     const st = location.state as { openInstructions?: boolean } | null;
-    if (!st?.openInstructions || loading) return;
-    navigate(location.pathname, { replace: true, state: {} });
-    if (userData && !error) {
-      openInstructions();
-    }
-  }, [loading, userData, error, location.state, location.pathname, navigate, openInstructions]);
+    if (!st?.openInstructions) return;
+    navigate("/instructions", { replace: true });
+  }, [location.state, navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -333,15 +329,12 @@ const Dashboard = () => {
       return;
     }
     if (sp.get("subscription") === "1") {
-      stripAnd(() => setMySubscriptionOpen(true));
+      stripAnd(() => navigate("/dashboard", { replace: true }));
       return;
     }
     const buy = (sp.get("buy") ?? "").toLowerCase();
     if (buy === "tariff") {
-      stripAnd(() => {
-        setTariffOpen(true);
-        setSelectedMonths(null);
-      });
+      stripAnd(() => navigate("/tariff"));
       return;
     }
     if (buy === "traffic") {
@@ -353,22 +346,10 @@ const Dashboard = () => {
     }
     if (sp.has("instructions")) {
       const raw = (sp.get("instructions") ?? "auto").toLowerCase();
-      const valid: InstructionsPlatform[] = [
-        "android",
-        "ios",
-        "windows",
-        "linux",
-        "appletv",
-        "androidtv",
-      ];
-      stripAnd(() => {
-        if (raw !== "auto" && valid.includes(raw as InstructionsPlatform)) {
-          setInstructionsInitialPlatform(raw as InstructionsPlatform);
-        } else {
-          setInstructionsInitialPlatform(undefined);
-        }
-        setInstructionsOpen(true);
-      });
+      const search = isInstructionsPlatform(raw) ? `?platform=${raw}` : "";
+      // Чистим search на /dashboard и уходим на отдельную страницу инструкций.
+      clearDashboardSearch();
+      navigate(`/instructions${search}`, { replace: true });
       return;
     }
     if (sp.get("referral") === "1") {
@@ -383,7 +364,7 @@ const Dashboard = () => {
       stripAnd(() => setAboutOpen(true));
       return;
     }
-  }, [loading, error, userData, location.search, clearDashboardSearch, fetchDevices]);
+  }, [loading, error, userData, location.search, clearDashboardSearch, fetchDevices, navigate]);
 
   const handleOpenDevices = () => {
     const count = userData?.currentDevices ?? 0;
@@ -417,10 +398,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleSelectTariff = (months: number) => {
-    setSelectedMonths(months);
-  };
-
   const paymentMethods =
     billingMeta?.payments?.length
       ? billingMeta.payments
@@ -436,57 +413,9 @@ const Dashboard = () => {
       .map((p) => [p.product_key, typeof p.price === "number" ? p.price : null]),
   );
 
-  const tariffPriceByMonths: Record<number, number | null> = {
-    1: productPriceByKey.get("sub_1m") ?? null,
-    6: productPriceByKey.get("sub_6m") ?? null,
-    12: productPriceByKey.get("sub_12m") ?? null,
-  };
-
-  const tariffProductKey: Record<number, string> = {
-    1: "sub_1m",
-    6: "sub_6m",
-    12: "sub_12m",
-  };
-
   const trafficProductKey: Record<number, string> = {
     20: "traffic_20gb",
     50: "traffic_50gb",
-  };
-
-  const handlePayment = async (paymentMethod: number) => {
-    if (!selectedMonths) return;
-    if (!userData?.userUuid) {
-      toast.error("Не найден профиль пользователя. Обновите страницу.");
-      return;
-    }
-    const product_key = tariffProductKey[selectedMonths];
-    const allowedPayments = new Set(paymentMethods.map((m) => m.id));
-    if (!allowedPayments.has(paymentMethod) || !product_key) {
-      toast.error("Некорректные параметры оплаты");
-      return;
-    }
-    setPaymentLoading(paymentMethod);
-    try {
-      const { data, error: fnError } = await invokeFunction("billing/checkout", {
-        userUuid: userData.userUuid,
-        product_key,
-        payment_method: paymentMethod,
-      });
-      if (fnError) throw fnError;
-      const paymentUrl =
-        data && typeof data === "object" && "payment_url" in data && typeof (data as { payment_url: unknown }).payment_url === "string"
-          ? (data as { payment_url: string }).payment_url
-          : "";
-      if (paymentUrl) {
-        window.location.href = paymentUrl;
-      } else {
-        toast.error("Не удалось получить ссылку на оплату");
-      }
-    } catch (err: any) {
-      toast.error(err.message || "Ошибка при создании платежа");
-    } finally {
-      setPaymentLoading(null);
-    }
   };
 
   const handleTrafficPayment = async (paymentMethod: number) => {
@@ -539,7 +468,7 @@ const Dashboard = () => {
 
   /**
    * Копирование в буфер из пользовательского жеста (без async-обёртки — иначе Clipboard API блокируется).
-   * Fallback как в InstructionsModal (CopySubscriptionLink): временный input на кнопке + execCommand.
+   * Фолбэк: временный input на кнопке + execCommand (как на странице /instructions).
    */
   const handleCopySubscriptionLink = () => {
     const url = resolveSubscriptionUrl();
@@ -626,14 +555,16 @@ const Dashboard = () => {
       key: "subscription",
       label: "Моя подписка",
       icon: CreditCard,
-      onClick: () => setMySubscriptionOpen(true),
+      onClick: () => navigate("/dashboard"),
       primary: true,
+      match: "/dashboard",
     },
     {
       key: "tariff",
       label: "Купить тариф",
       icon: ShoppingCart,
-      onClick: () => setTariffOpen(true),
+      onClick: () => navigate("/tariff"),
+      match: "/tariff",
     },
     ...(isPremiumPlan
       ? ([
@@ -641,10 +572,8 @@ const Dashboard = () => {
             key: "traffic",
             label: "Купить трафик",
             icon: Gauge,
-            onClick: () => {
-              setTrafficBuyOpen(true);
-              setTrafficPaymentStep(null);
-            },
+            onClick: () => navigate("/traffic"),
+            match: "/traffic",
           },
         ] as DashboardSidebarItem[])
       : []),
@@ -653,19 +582,25 @@ const Dashboard = () => {
       label: "Инструкции",
       icon: BookOpen,
       onClick: () => openInstructions(),
+      match: "/instructions",
     },
     {
       key: "support",
       label: "Поддержка",
       icon: LifeBuoy,
       onClick: () => navigate("/support"),
+      match: ["/support", "/support2"],
     },
-    {
-      key: "other",
-      label: "Другое",
-      icon: MoreHorizontal,
-      onClick: () => setOtherMenuOpen(true),
-    },
+    ...(SIDEBAR_SHOW_OTHER
+      ? ([
+          {
+            key: "other",
+            label: "Другое",
+            icon: MoreHorizontal,
+            onClick: () => setOtherMenuOpen(true),
+          },
+        ] as DashboardSidebarItem[])
+      : []),
   ];
 
   if (loading) {
@@ -730,6 +665,68 @@ const Dashboard = () => {
                     <CalendarClock className={`h-6 w-6 ${isExpired ? "text-red-400" : "text-[#c6ff3d]"}`} />
                     <span className="app-stat__label">Дата истечения</span>
                     <span className="app-stat__value">{userData?.expireAt ? formatDate(userData.expireAt) : "—"}</span>
+                  </div>
+                </div>
+
+                <div className="app-page__panel mt-6">
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="h-5 w-5 text-[#c6ff3d]" />
+                    <h2 className="text-lg font-semibold">Моя подписка</h2>
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Управление подключением в приложении Happ
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-center gap-2 py-6 text-base font-semibold"
+                      onClick={() => openInstructions()}
+                    >
+                      <Download className="h-5 w-5" />
+                      Скачать приложение
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-center gap-2 py-6 text-base font-semibold"
+                      disabled={!resolveSubscriptionUrl()}
+                      onClick={() => {
+                        const url = resolveSubscriptionUrl();
+                        if (!url) {
+                          toast.error("Ссылка подписки недоступна");
+                          return;
+                        }
+                        window.location.href = oneClickHappUrl(url);
+                      }}
+                    >
+                      <Link2 className="h-5 w-5" />
+                      Добавить подписку в приложение
+                    </Button>
+                    <Button
+                      ref={copySubscriptionButtonRef}
+                      variant="outline"
+                      className="w-full justify-center gap-2 py-6 text-base font-semibold"
+                      disabled={!resolveSubscriptionUrl()}
+                      onClick={handleCopySubscriptionLink}
+                    >
+                      <Copy className="h-5 w-5" />
+                      Скопировать подписку
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-center gap-2 py-6 text-base font-semibold"
+                      disabled={!resolveSubscriptionUrl()}
+                      onClick={() => {
+                        const url = resolveSubscriptionUrl();
+                        if (!url) {
+                          toast.error("Ссылка подписки недоступна");
+                          return;
+                        }
+                        setSubscriptionQrOpen(true);
+                      }}
+                    >
+                      <QrCode className="h-5 w-5" />
+                      QR-Code
+                    </Button>
                   </div>
                 </div>
 
@@ -842,130 +839,6 @@ const Dashboard = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Tariff Selection Modal */}
-      <Dialog
-        open={tariffOpen}
-        onOpenChange={(open) => {
-          setTariffOpen(open);
-          if (!open) setSelectedMonths(null);
-        }}
-      >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{selectedMonths ? "Выберите способ оплаты" : "Выберите срок тарифа"}</DialogTitle>
-            <DialogDescription>
-              {selectedMonths
-                ? `Подписка на ${selectedMonths} мес. — ${tariffPriceByMonths[selectedMonths] ?? "—"} ₽`
-                : "Выберите подходящий период подписки"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 pt-2">
-            {!selectedMonths ? (
-              [
-                { months: 1, label: "1 месяц", price: tariffPriceByMonths[1] },
-                { months: 6, label: "6 месяцев", price: tariffPriceByMonths[6] },
-                { months: 12, label: "12 месяцев", price: tariffPriceByMonths[12] },
-              ].map((opt) => (
-                <Button
-                  key={opt.months}
-                  variant="outline"
-                  className="w-full justify-between py-6 text-base font-semibold group"
-                  onClick={() => handleSelectTariff(opt.months)}
-                >
-                  <span>{opt.label}</span>
-                  <span className="text-primary group-hover:text-white">{opt.price ?? "—"} ₽</span>
-                </Button>
-              ))
-            ) : (
-              <>
-                <Button variant="ghost" size="sm" className="mb-1 w-fit" onClick={() => setSelectedMonths(null)}>
-                  ← Назад
-                </Button>
-                {paymentMethods.map((method) => (
-                  <Button
-                    key={method.id}
-                    variant="outline"
-                    className="w-full justify-center py-6 text-base font-semibold"
-                    disabled={paymentLoading !== null}
-                    onClick={() => handlePayment(method.id)}
-                  >
-                    {paymentLoading === method.id ? <Loader2 className="h-5 w-5 animate-spin" /> : method.label}
-                  </Button>
-                ))}
-              </>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* My subscription */}
-      <Dialog
-        open={mySubscriptionOpen}
-        onOpenChange={(open) => {
-          setMySubscriptionOpen(open);
-          if (!open) setSubscriptionQrOpen(false);
-        }}
-      >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Моя подписка</DialogTitle>
-            <DialogDescription>Управление подключением в приложении Happ</DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 pt-2">
-            <Button
-              variant="outline"
-              className="w-full justify-center gap-2 py-6 text-base font-semibold"
-              onClick={() => openInstructions()}
-            >
-              <Download className="h-5 w-5" />
-              Скачать приложение
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-center gap-2 py-6 text-base font-semibold"
-              disabled={!resolveSubscriptionUrl()}
-              onClick={() => {
-                const url = resolveSubscriptionUrl();
-                if (!url) {
-                  toast.error("Ссылка подписки недоступна");
-                  return;
-                }
-                window.location.href = oneClickHappUrl(url);
-              }}
-            >
-              <Link2 className="h-5 w-5" />
-              Добавить подписку в приложение
-            </Button>
-            <Button
-              ref={copySubscriptionButtonRef}
-              variant="outline"
-              className="w-full justify-center gap-2 py-6 text-base font-semibold"
-              disabled={!resolveSubscriptionUrl()}
-              onClick={handleCopySubscriptionLink}
-            >
-              <Copy className="h-5 w-5" />
-              Скопировать подписку
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-center gap-2 py-6 text-base font-semibold"
-              disabled={!resolveSubscriptionUrl()}
-              onClick={() => {
-                const url = resolveSubscriptionUrl();
-                if (!url) {
-                  toast.error("Ссылка подписки недоступна");
-                  return;
-                }
-                setSubscriptionQrOpen(true);
-              }}
-            >
-              <QrCode className="h-5 w-5" />
-              QR-Code
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={subscriptionQrOpen} onOpenChange={setSubscriptionQrOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
@@ -996,17 +869,6 @@ const Dashboard = () => {
           })()}
         </DialogContent>
       </Dialog>
-
-      {/* Instructions Modal */}
-      <InstructionsModal
-        open={instructionsOpen}
-        onOpenChange={(open) => {
-          setInstructionsOpen(open);
-          if (!open) setInstructionsInitialPlatform(undefined);
-        }}
-        subscriptionUrl={resolveSubscriptionUrl() || undefined}
-        initialPlatform={instructionsInitialPlatform}
-      />
 
       {/* Traffic Info Modal */}
       <Dialog open={trafficInfoOpen} onOpenChange={setTrafficInfoOpen}>

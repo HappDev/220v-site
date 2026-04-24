@@ -1,33 +1,52 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import {
+  Apple,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Image as ImageIcon,
+  Monitor,
+  QrCode,
+  Smartphone,
+  Terminal,
+  Tv,
+  Video,
+} from "lucide-react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
+
+import DashboardSidebar from "@/components/DashboardSidebar";
+import { useDashboardSidebarItems } from "@/hooks/useDashboardSidebarItems";
+import LandingShell from "@/pages/landing/LandingShell";
+import LandingFooter from "@/pages/landing/LandingFooter";
+
+import { invokeFunction } from "@/lib/api";
 import {
-  Smartphone,
-  Apple,
-  Monitor,
-  Terminal,
-  Tv,
-  Copy,
-  QrCode,
-  Image,
-  Video,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
-import { toast } from "sonner";
+  getVpnAuthEmail,
+  getVpnSubscriptionUrl,
+  setVpnSubscriptionUrl,
+} from "@/lib/vpnStorage";
+import {
+  INSTRUCTIONS_PLATFORMS,
+  isInstructionsPlatform,
+  oneClickHappUrl,
+  type InstructionsPlatform,
+} from "@/lib/happ";
 
 import ios1 from "@/assets/screenshots/ios1.png";
 import ios2 from "@/assets/screenshots/ios2.png";
@@ -43,19 +62,11 @@ import atv2 from "@/assets/screenshots/atv2.webp";
 import tv1 from "@/assets/screenshots/tv1.png";
 import tv2 from "@/assets/screenshots/tv2.png";
 
-export type InstructionsPlatform = "android" | "ios" | "windows" | "linux" | "appletv" | "androidtv";
-
-interface InstructionsModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  subscriptionUrl?: string;
-  /** Якорная ссылка: конкретная платформа; без пропа — авто по User-Agent */
-  initialPlatform?: InstructionsPlatform;
-}
-
 type Platform = InstructionsPlatform;
 
-type InstructionsClient = { layout: "dropdown" | "grid"; defaultPlatform: Platform };
+type LayoutKind = "dropdown" | "grid";
+
+type InstructionsClient = { layout: LayoutKind; defaultPlatform: Platform };
 
 /** Android / iOS(iPhone,iPad) / macOS — выпадающий список; ПК (Windows, Linux, …) — сетка. */
 function detectInstructionsClient(): InstructionsClient {
@@ -106,7 +117,7 @@ const screenshotsByPlatform: Partial<Record<Platform, string[]>> = {
 };
 
 const CopySubscriptionLink = ({ subscriptionUrl }: { subscriptionUrl?: string }) => {
-  const btnRef = React.useRef<HTMLButtonElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
 
   const handleCopy = () => {
     if (!subscriptionUrl) {
@@ -153,7 +164,7 @@ const CopySubscriptionLink = ({ subscriptionUrl }: { subscriptionUrl?: string })
       ref={btnRef}
       type="button"
       onClick={handleCopy}
-      className="relative inline-flex items-center gap-1.5 font-semibold text-primary hover:underline"
+      className="instructions-inline-link"
     >
       <Copy className="h-3.5 w-3.5" />
       Скопировать ссылку подписки
@@ -180,7 +191,7 @@ const QrCodeLink = ({
     <button
       type="button"
       onClick={handleOpen}
-      className="inline-flex items-center gap-1.5 font-semibold text-primary hover:underline"
+      className="instructions-inline-link"
     >
       <QrCode className="h-3.5 w-3.5" />
       QR-Code
@@ -193,25 +204,25 @@ const ExternalLink = ({ href, children }: { href: string; children: React.ReactN
     href={href}
     target="_blank"
     rel="noopener noreferrer"
-    className="font-semibold text-primary hover:underline"
+    className="instructions-inline-link"
   >
     {children}
   </a>
 );
 
-const ActionButtons = ({
-  onScreenshots,
-}: {
-  onScreenshots: () => void;
-}) => (
-  <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-    <Button variant="outline" className="flex-1 gap-2" onClick={onScreenshots}>
-      <Image className="h-4 w-4" />
+const ActionButtons = ({ onScreenshots }: { onScreenshots: () => void }) => (
+  <div className="instruction-action-row">
+    <Button
+      variant="outline"
+      className="instruction-secondary-button"
+      onClick={onScreenshots}
+    >
+      <ImageIcon className="h-4 w-4" />
       Скриншоты
     </Button>
     <Button
       variant="outline"
-      className="flex-1 gap-2"
+      className="instruction-secondary-button"
       onClick={() => toast.info("Видеоинструкция в данный момент недоступна")}
     >
       <Video className="h-4 w-4" />
@@ -221,23 +232,19 @@ const ActionButtons = ({
 );
 
 const Step = ({ n, children }: { n: number; children: React.ReactNode }) => (
-  <div className="flex items-center gap-3">
-    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+  <div className="instruction-step">
+    <span className="instruction-step__badge">
       {n}
     </span>
-    <div className="min-w-0 flex-1 text-sm text-foreground">{children}</div>
+    <div className="instruction-step__content">{children}</div>
   </div>
 );
-
-export function oneClickHappUrl(subscriptionUrl: string) {
-  return `happ://add/${encodeURIComponent(subscriptionUrl)}`;
-}
 
 const OneClickAddButton = ({ subscriptionUrl }: { subscriptionUrl?: string }) => (
   <Button
     type="button"
     variant="default"
-    className="mt-2 block w-full sm:w-auto"
+    className="instruction-primary-button sm:w-auto"
     disabled={!subscriptionUrl}
     onClick={() => {
       if (!subscriptionUrl) {
@@ -293,20 +300,70 @@ const ScreenshotGallery = ({
   );
 };
 
-const InstructionsModal = ({ open, onOpenChange, subscriptionUrl, initialPlatform }: InstructionsModalProps) => {
+const Instructions = () => {
+  const { email, items, handleLogout } = useDashboardSidebarItems();
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const client = useMemo(() => detectInstructionsClient(), []);
-  const [platform, setPlatform] = useState<Platform>(client.defaultPlatform);
+
+  const platformParam = searchParams.get("platform");
+  const initialPlatform: Platform = isInstructionsPlatform(platformParam)
+    ? platformParam
+    : client.defaultPlatform;
+
+  const [platform, setPlatform] = useState<Platform>(initialPlatform);
   const [screenshotsOpen, setScreenshotsOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+  const [subscriptionUrl, setSubscriptionUrlState] = useState<string>(
+    () => getVpnSubscriptionUrl(),
+  );
 
+  // Если URL изменился извне — синхронизируем выбранную платформу.
   useEffect(() => {
-    if (!open) return;
-    if (initialPlatform) {
-      setPlatform(initialPlatform);
-    } else {
-      setPlatform(client.defaultPlatform);
+    if (isInstructionsPlatform(platformParam) && platformParam !== platform) {
+      setPlatform(platformParam);
     }
-  }, [open, initialPlatform, client.defaultPlatform]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [platformParam]);
+
+  const handlePlatformChange = useCallback(
+    (next: Platform) => {
+      setPlatform(next);
+      const sp = new URLSearchParams(searchParams);
+      sp.set("platform", next);
+      setSearchParams(sp, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  // Подтягиваем актуальную ссылку подписки, если её ещё нет в localStorage.
+  useEffect(() => {
+    if (subscriptionUrl) return;
+    const currentEmail = getVpnAuthEmail();
+    if (!currentEmail) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await invokeFunction("remnawave-proxy", {
+          action: "check-or-create",
+          email: currentEmail,
+        });
+        if (cancelled || error) return;
+        const user = (data as { user?: { subscriptionUrl?: unknown } } | null)?.user;
+        const url =
+          user && typeof user.subscriptionUrl === "string" ? user.subscriptionUrl.trim() : "";
+        if (url) {
+          setVpnSubscriptionUrl(url);
+          setSubscriptionUrlState(url);
+        }
+      } catch {
+        // ignore — на странице есть фолбэк-сообщение «Ссылка подписки недоступна».
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [subscriptionUrl]);
 
   const handleScreenshots = () => {
     const shots = screenshotsByPlatform[platform];
@@ -435,7 +492,8 @@ const InstructionsModal = ({ open, onOpenChange, subscriptionUrl, initialPlatfor
     ),
   };
 
-  const useSimplifiedPhone = client.layout === "dropdown" && (platform === "android" || platform === "ios");
+  const useSimplifiedPhone =
+    client.layout === "dropdown" && (platform === "android" || platform === "ios");
 
   const mobileAndroidSimplified = (
     <div className="flex flex-col gap-3">
@@ -481,61 +539,96 @@ const InstructionsModal = ({ open, onOpenChange, subscriptionUrl, initialPlatfor
 
   const currentScreenshots = screenshotsByPlatform[platform];
 
+  // Список платформ всегда соответствует общему перечню.
+  const platformItems = useMemo(
+    () => platforms.filter((p) => INSTRUCTIONS_PLATFORMS.includes(p.id)),
+    [],
+  );
+  const activePlatform = platformItems.find((item) => item.id === platform) ?? platformItems[0];
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Инструкции по подключению</DialogTitle>
-          <DialogDescription>
-            {client.layout === "dropdown"
-              ? "Выбери платформу в списке и следуй шагам"
-              : "Выбери свою платформу для настройки"}
-          </DialogDescription>
-        </DialogHeader>
+    <LandingShell className="landing-root--with-sidebar">
+      <DashboardSidebar items={items} onLogout={handleLogout} email={email || undefined} />
 
-        {client.layout === "dropdown" ? (
-          <div className="space-y-2">
-            <span className="text-sm font-medium text-foreground">Платформа</span>
-            <Select value={platform} onValueChange={(v) => setPlatform(v as Platform)}>
-              <SelectTrigger className="w-full" aria-label="Платформа">
-                <SelectValue placeholder="Выберите платформу" />
-              </SelectTrigger>
-              <SelectContent position="popper" className="z-[60]">
-                {platforms.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    <span className="flex items-center gap-2">
-                      {React.cloneElement(p.icon as React.ReactElement<{ className?: string }>, {
-                        className: "h-4 w-4 shrink-0",
-                      })}
-                      {p.label}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-            {platforms.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => setPlatform(p.id)}
-                className={`flex w-full flex-col items-center gap-1.5 rounded-xl p-3 text-xs font-semibold transition-all ${
-                  platform === p.id
-                    ? "bg-primary text-primary-foreground ring-2 ring-primary/40"
-                    : "bg-card text-muted-foreground ring-1 ring-border hover:bg-primary/10"
-                }`}
-              >
-                {p.icon}
-                <span className="whitespace-nowrap text-center leading-tight">{p.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
+      <main>
+        <section className="app-page">
+          <div className="container">
+            <div className="app-page__hero app-page__hero--dashboard">
+              <div className="app-page__panel instructions-page">
+                <div className="app-page__eyebrow">Подключение</div>
+                <h1 className="app-page__title">Инструкции по подключению</h1>
+                <p className="app-page__subtitle">
+                  {client.layout === "dropdown"
+                    ? "Выберите платформу в списке ниже и следуйте шагам."
+                    : "Выберите свою платформу для настройки."}
+                </p>
 
-        <div className="rounded-xl bg-card p-4 ring-1 ring-border">{instructionBody}</div>
-      </DialogContent>
+                <div className="instructions-page__content">
+                  {client.layout === "dropdown" ? (
+                    <div>
+                      <span className="instructions-page__label">Платформа</span>
+                      <Select value={platform} onValueChange={(v) => handlePlatformChange(v as Platform)}>
+                        <SelectTrigger
+                          className="instructions-platform-select"
+                          aria-label="Платформа"
+                        >
+                          <span className="instructions-platform-select__value">
+                            <span className="instructions-platform-select__icon">
+                              {React.cloneElement(
+                                activePlatform.icon as React.ReactElement<{ className?: string }>,
+                                { className: "h-4 w-4 shrink-0" },
+                              )}
+                            </span>
+                            <span className="instructions-platform-select__text">
+                              {activePlatform.label}
+                            </span>
+                          </span>
+                        </SelectTrigger>
+                        <SelectContent position="popper" className="instructions-platform-select-content z-[60]">
+                          {platformItems.map((p) => (
+                            <SelectItem key={p.id} value={p.id} className="instructions-platform-select-item">
+                              <span className="flex items-center gap-2">
+                                {React.cloneElement(
+                                  p.icon as React.ReactElement<{ className?: string }>,
+                                  { className: "h-4 w-4 shrink-0" },
+                                )}
+                                {p.label}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : (
+                    <div className="instructions-platform-grid">
+                      {platformItems.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => handlePlatformChange(p.id)}
+                          className={`instructions-platform-card ${
+                            platform === p.id ? "instructions-platform-card--active" : ""
+                          }`}
+                        >
+                          {p.icon}
+                          <span className="text-center leading-tight">{p.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="instructions-card">
+                    {instructionBody}
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <LandingFooter />
 
       {/* Screenshots gallery */}
       {currentScreenshots && (
@@ -576,8 +669,8 @@ const InstructionsModal = ({ open, onOpenChange, subscriptionUrl, initialPlatfor
           )}
         </DialogContent>
       </Dialog>
-    </Dialog>
+    </LandingShell>
   );
 };
 
-export default InstructionsModal;
+export default Instructions;

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ComponentType, type SVGProps } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   CreditCard,
   ShoppingCart,
@@ -21,6 +21,23 @@ export type DashboardSidebarItem = {
   icon: IconType;
   onClick: () => void;
   primary?: boolean;
+  /**
+   * Pathname (or list of pathnames) that should mark this item as active.
+   * An item matches when the current pathname equals the value or starts
+   * with `<value>/` (so `/tariff` also covers `/tariff/pay`).
+   */
+  match?: string | string[];
+};
+
+const isPathMatch = (
+  pathname: string,
+  match: DashboardSidebarItem["match"],
+): boolean => {
+  if (!match) return false;
+  const patterns = Array.isArray(match) ? match : [match];
+  return patterns.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
 };
 
 type DashboardSidebarProps = {
@@ -31,6 +48,7 @@ type DashboardSidebarProps = {
 
 export const DashboardSidebar = ({ items, onLogout, email }: DashboardSidebarProps) => {
   const [open, setOpen] = useState(false);
+  const { pathname } = useLocation();
 
   useEffect(() => {
     if (!open) return;
@@ -90,13 +108,16 @@ export const DashboardSidebar = ({ items, onLogout, email }: DashboardSidebarPro
         <nav className="dashboard-sidebar__nav">
           {items.map((item) => {
             const Icon = item.icon;
+            const active = isPathMatch(pathname, item.match);
+            const primary = item.primary && active;
             return (
               <button
                 key={item.key}
                 type="button"
                 className={`dashboard-sidebar__link${
-                  item.primary ? " dashboard-sidebar__link--primary" : ""
-                }`}
+                  primary ? " dashboard-sidebar__link--primary" : ""
+                }${active ? " dashboard-sidebar__link--active" : ""}`}
+                aria-current={active ? "page" : undefined}
                 onClick={() => handleItem(item)}
               >
                 <Icon className="h-5 w-5 dashboard-sidebar__link-icon" />

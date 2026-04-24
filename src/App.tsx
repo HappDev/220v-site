@@ -10,6 +10,11 @@ import PayFail from "./pages/PayFail";
 import Support from "./pages/Support";
 import Policy from "./pages/Policy";
 import Price from "./pages/Price";
+import Tariff from "./pages/Tariff";
+import TariffPay from "./pages/TariffPay";
+import Traffic from "./pages/Traffic";
+import TrafficPay from "./pages/TrafficPay";
+import Instructions from "./pages/Instructions";
 import Terms from "./pages/Terms";
 import NotFound from "./pages/NotFound";
 import RequireVpnAuth from "./components/RequireVpnAuth";
@@ -27,6 +32,46 @@ const App = () => (
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/policy" element={<Policy />} />
           <Route path="/price" element={<Price />} />
+          <Route
+            path="/tariff"
+            element={
+              <RequireVpnAuth>
+                <Tariff />
+              </RequireVpnAuth>
+            }
+          />
+          <Route
+            path="/tariff/pay"
+            element={
+              <RequireVpnAuth>
+                <TariffPay />
+              </RequireVpnAuth>
+            }
+          />
+          <Route
+            path="/traffic"
+            element={
+              <RequireVpnAuth>
+                <Traffic />
+              </RequireVpnAuth>
+            }
+          />
+          <Route
+            path="/traffic/pay"
+            element={
+              <RequireVpnAuth>
+                <TrafficPay />
+              </RequireVpnAuth>
+            }
+          />
+          <Route
+            path="/instructions"
+            element={
+              <RequireVpnAuth>
+                <Instructions />
+              </RequireVpnAuth>
+            }
+          />
           <Route path="/terms" element={<Terms />} />
           <Route
             path="/support"

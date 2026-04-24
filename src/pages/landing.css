@@ -451,6 +451,40 @@ body.landing-no-scroll { overflow: hidden; }
 }
 .landing-root .plan__btn { margin-top: auto; }
 
+/* ---------- Plan blocks (Тариф / Цена / Выгода) ---------- */
+.landing-root .plan__block {
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.landing-root .plan__block + .plan__block { margin-top: 0; }
+.landing-root .plan__eyebrow {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.landing-root .plan__benefit { margin-bottom: 20px; }
+.landing-root .plan__benefit-value {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--accent);
+  line-height: 1.1;
+}
+.landing-root .plan__benefit-value--muted {
+  font-size: 20px;
+  color: var(--muted-2);
+}
+.landing-root .plan__benefit-note {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
 /* ---------- Price page ---------- */
 .landing-root .price-page { padding: 56px 0 80px; }
 .landing-root .price-page__head {
@@ -481,6 +515,60 @@ body.landing-no-scroll { overflow: hidden; }
   font-size: 13px;
   color: var(--muted);
 }
+
+/* ---------- Pay page ---------- */
+.landing-root .pay-page {
+  max-width: 520px;
+  margin: 0 auto;
+}
+.landing-root .pay-page__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-2);
+  font-size: 14px;
+  padding: 6px 0;
+  margin-bottom: 18px;
+  transition: color 0.2s ease;
+}
+.landing-root .pay-page__back:hover { color: var(--accent); }
+.landing-root .pay-page__card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 28px 24px;
+}
+.landing-root .pay-page__methods {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+.landing-root .pay-page__method {
+  max-width: none;
+  padding: 16px 22px;
+  font-size: 16px;
+}
+.landing-root .pay-page__loading {
+  display: flex;
+  justify-content: center;
+  padding: 32px 0;
+}
+.landing-root .pay-page__spinner {
+  width: 28px;
+  height: 28px;
+  color: var(--muted);
+  animation: pay-spin 1s linear infinite;
+}
+.landing-root .pay-page__spinner--sm { width: 20px; height: 20px; }
+.landing-root .pay-page__error {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--muted-2);
+  font-size: 15px;
+}
+@keyframes pay-spin { to { transform: rotate(360deg); } }
 
 /* ---------- Dashboard / Support ---------- */
 .landing-root .app-page {
@@ -739,6 +827,262 @@ body.landing-no-scroll { overflow: hidden; }
 .landing-root .app-btn {
   width: 100%;
 }
+.landing-root .instructions-page__content {
+  display: grid;
+  gap: 18px;
+  margin-top: 26px;
+}
+.landing-root .instructions-page__label {
+  display: inline-flex;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+}
+.landing-root .instructions-platform-select {
+  width: 100%;
+  max-width: 360px;
+  height: 48px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 14px;
+  border: 1px solid rgba(198, 255, 61, 0.18);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025));
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 14px 30px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: transform .15s ease, border-color .2s ease, background .2s ease, box-shadow .2s ease;
+}
+.landing-root .instructions-platform-select:hover {
+  transform: translateY(-1px);
+  border-color: rgba(198, 255, 61, 0.32);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.04));
+}
+.landing-root .instructions-platform-select[data-state="open"] {
+  border-color: rgba(198, 255, 61, 0.36);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.045));
+  box-shadow: 0 0 0 3px rgba(198, 255, 61, 0.1), 0 18px 40px rgba(0, 0, 0, 0.22);
+}
+.landing-root .instructions-platform-select:focus-visible {
+  border-color: rgba(198, 255, 61, 0.45);
+  box-shadow: 0 0 0 3px rgba(198, 255, 61, 0.12), 0 18px 40px rgba(0, 0, 0, 0.22);
+}
+.landing-root .instructions-platform-select > svg {
+  color: var(--accent);
+  opacity: 0.9;
+}
+.landing-root .instructions-platform-select__value {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+.landing-root .instructions-platform-select__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(198, 255, 61, 0.16);
+  border-radius: 12px;
+  background: rgba(198, 255, 61, 0.08);
+  color: var(--accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.landing-root .instructions-platform-select__text {
+  min-width: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+/* Контент списка рендерится через Radix Portal в document.body, поэтому
+   правила ниже не привязываем к .landing-root — иначе они не применяются. */
+.instructions-platform-select-content {
+  padding: 6px;
+  border: 1px solid rgba(198, 255, 61, 0.18);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(10, 10, 10, 0.98));
+  color: #ffffff;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.instructions-platform-select-item {
+  min-height: 42px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  color: #c7c7c7;
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease, transform .15s ease;
+}
+/* Более высокая специфичность (0,3,0) — чтобы побить дефолтные shadcn/Tailwind
+   утилиты `focus:bg-accent` и `focus:text-accent-foreground` (0,2,0) из
+   `src/components/ui/select.tsx`. Radix Select проставляет и `:focus`,
+   и `[data-highlighted]`, поэтому перекрываем обе формы. */
+.instructions-platform-select-content .instructions-platform-select-item[data-highlighted],
+.instructions-platform-select-content .instructions-platform-select-item:focus,
+.instructions-platform-select-content .instructions-platform-select-item:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+.instructions-platform-select-content .instructions-platform-select-item[data-state="checked"] {
+  background: rgba(198, 255, 61, 0.12);
+  color: #c6ff3d;
+}
+.instructions-platform-select-content .instructions-platform-select-item[data-state="checked"][data-highlighted],
+.instructions-platform-select-content .instructions-platform-select-item[data-state="checked"]:focus,
+.instructions-platform-select-content .instructions-platform-select-item[data-state="checked"]:focus-visible {
+  background: rgba(198, 255, 61, 0.18);
+  color: #c6ff3d;
+}
+/* Скрываем дефолтный индикатор-«галочку» слева из shadcn SelectItem:
+   он использует левый паддинг pl-8, который мы переопределили более узким,
+   поэтому без скрытия индикатор визуально перекрывает иконку платформы. */
+.instructions-platform-select-item > span:first-child {
+  display: none;
+}
+.landing-root .instructions-platform-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.landing-root .instructions-platform-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 88px;
+  padding: 16px 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted-2);
+  font-size: 13px;
+  font-weight: 700;
+  transition: transform .15s ease, border-color .2s ease, background .2s ease, color .2s ease, box-shadow .2s ease;
+}
+.landing-root .instructions-platform-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(198, 255, 61, 0.28);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+.landing-root .instructions-platform-card--active {
+  border-color: rgba(198, 255, 61, 0.38);
+  background: rgba(198, 255, 61, 0.12);
+  color: var(--accent);
+  box-shadow: 0 16px 36px rgba(198, 255, 61, 0.08);
+}
+.landing-root .instructions-card {
+  position: relative;
+  overflow: hidden;
+  padding: 22px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+}
+.landing-root .instructions-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(140deg, rgba(198, 255, 61, 0.05), transparent 30%, transparent 70%, rgba(198, 255, 61, 0.04));
+}
+.landing-root .instruction-step {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.landing-root .instruction-step__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #0a0a0a;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 8px 20px rgba(198, 255, 61, 0.24);
+}
+.landing-root .instruction-step__content {
+  min-width: 0;
+  flex: 1;
+  color: var(--muted-2);
+  font-size: 15px;
+  line-height: 1.65;
+}
+.landing-root .instruction-step__content strong {
+  color: var(--text);
+}
+.landing-root .instructions-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  font-weight: 700;
+  vertical-align: baseline;
+  transition: color .2s ease, opacity .2s ease;
+}
+.landing-root .instructions-inline-link:hover {
+  color: var(--accent-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.landing-root .instruction-primary-button {
+  width: min(100%, 340px);
+  margin-top: 10px;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #0a0a0a;
+  box-shadow: 0 10px 30px rgba(198, 255, 61, 0.2);
+}
+.landing-root .instruction-primary-button:hover {
+  background: var(--accent-2);
+  color: #0a0a0a;
+}
+.landing-root .instruction-action-row {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+.landing-root .instruction-secondary-button {
+  min-height: 46px;
+  border: 1px solid rgba(198, 255, 61, 0.22);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+.landing-root .instruction-secondary-button:hover {
+  border-color: rgba(198, 255, 61, 0.36);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
 .landing-root .app-page__notice {
   max-width: 480px;
   margin: 120px auto 0;
@@ -772,7 +1116,7 @@ body.landing-no-scroll { overflow: hidden; }
 }
 .landing-root .support-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
 }
 .landing-root .support-meta {
@@ -820,6 +1164,12 @@ body.landing-no-scroll { overflow: hidden; }
   background:
     radial-gradient(320px 200px at 0% 0%, rgba(255, 198, 83, 0.12), transparent 70%),
     rgba(255, 198, 83, 0.08);
+}
+.landing-root .support-announcement--page-start {
+  margin-bottom: 24px;
+}
+.landing-root .support-meta--in-chat {
+  margin-top: 16px;
 }
 .landing-root .support-announcement .support-card__title {
   margin-bottom: 6px;
@@ -1053,9 +1403,19 @@ body.landing-no-scroll { overflow: hidden; }
   .landing-root .app-actions-row {
     grid-template-columns: 1fr;
   }
+  .landing-root .instruction-action-row,
+  .landing-root .instructions-platform-grid {
+    grid-template-columns: 1fr;
+  }
   .landing-root .app-page__panel,
   .landing-root .support-card {
     padding: 22px;
+  }
+  .landing-root .instructions-platform-select {
+    max-width: none;
+  }
+  .landing-root .instructions-card {
+    padding: 18px;
   }
   .landing-root .app-page__notice {
     margin-top: 80px;
@@ -1074,6 +1434,12 @@ body.landing-no-scroll { overflow: hidden; }
   .landing-root .support-card,
   .landing-root .app-page__notice {
     padding: 20px 18px;
+  }
+  .landing-root .instruction-step {
+    padding: 13px 14px;
+  }
+  .landing-root .instruction-step__content {
+    font-size: 14px;
   }
   .landing-root .support-meta__value,
   .landing-root .app-action__value,
@@ -1249,6 +1615,33 @@ body.landing-no-scroll { overflow: hidden; }
 }
 
 .landing-root .dashboard-sidebar__link--primary:hover .dashboard-sidebar__link-icon {
+  color: #0a0a0a;
+}
+
+.landing-root .dashboard-sidebar__link--active {
+  color: #0a0a0a;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(198, 255, 61, 0.35);
+}
+
+.landing-root .dashboard-sidebar__link--active .dashboard-sidebar__link-icon {
+  color: #0a0a0a;
+}
+
+.landing-root
+  .dashboard-sidebar__link--primary.dashboard-sidebar__link--active {
+  color: #0a0a0a;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(198, 255, 61, 0.35);
+}
+
+.landing-root
+  .dashboard-sidebar__link--primary.dashboard-sidebar__link--active
+  .dashboard-sidebar__link-icon {
   color: #0a0a0a;
 }
 
