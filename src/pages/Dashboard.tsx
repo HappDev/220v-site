@@ -31,8 +31,10 @@ import {
   setVpnTalkmeProfileJson,
   VPN_STORAGE_KEY_PREFIX,
 } from "@/lib/vpnStorage";
+import { isCardPaymentMethod, type BillingPaymentMethod } from "@/lib/paymentMethods";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { CardPaymentEmailDialog } from "@/components/CardPaymentEmailDialog";
 import { oneClickHappUrl, isInstructionsPlatform, type InstructionsPlatform } from "@/lib/happ";
 import LandingShell from "@/pages/landing/LandingShell";
 import LandingFooter from "@/pages/landing/LandingFooter";
@@ -68,7 +70,7 @@ interface HwidDevice {
 }
 
 type BillingMeta = {
-  payments: { id: number; type: string; label: string }[];
+  payments: BillingPaymentMethod[];
   products: {
     product_key: string;
     tariff_key: string;
@@ -189,6 +191,7 @@ const Dashboard = () => {
   const [paymentLoading, setPaymentLoading] = useState<number | null>(null);
   const [trafficBuyOpen, setTrafficBuyOpen] = useState(false);
   const [trafficPaymentStep, setTrafficPaymentStep] = useState<{ gb: number; price: number } | null>(null);
+  const [cardPaymentPending, setCardPaymentPending] = useState<number | null>(null);
   const [otherMenuOpen, setOtherMenuOpen] = useState(false);
   const [referralOpen, setReferralOpen] = useState(false);
   const [promoOpen, setPromoOpen] = useState(false);
@@ -497,6 +500,19 @@ const Dashboard = () => {
     } finally {
       setPaymentLoading(null);
     }
+  };
+
+  const handleTrafficPaymentMethodClick = (method: BillingPaymentMethod) => {
+    if (isCardPaymentMethod(method)) {
+      setCardPaymentPending(method.id);
+      return;
+    }
+    void handleTrafficPayment(method.id);
+  };
+
+  const handleConfirmCardPayment = () => {
+    if (cardPaymentPending === null) return;
+    void handleTrafficPayment(cardPaymentPending);
   };
 
   const handleLogout = () => {
@@ -1128,7 +1144,7 @@ const Dashboard = () => {
                     type="button"
                     className="dash-modal-btn dash-modal-btn--ghost"
                     disabled={paymentLoading !== null}
-                    onClick={() => handleTrafficPayment(method.id)}
+                    onClick={() => handleTrafficPaymentMethodClick(method)}
                   >
                     {paymentLoading === method.id ? <Loader2 className="h-5 w-5 animate-spin" /> : method.label}
                   </button>
@@ -1138,6 +1154,14 @@ const Dashboard = () => {
           </div>
         </DialogContent>
       </Dialog>
+      <CardPaymentEmailDialog
+        open={cardPaymentPending !== null}
+        loading={paymentLoading === cardPaymentPending}
+        onOpenChange={(open) => {
+          if (!open && paymentLoading === null) setCardPaymentPending(null);
+        }}
+        onConfirm={handleConfirmCardPayment}
+      />
       {/* Other Menu Modal */}
       <Dialog open={otherMenuOpen} onOpenChange={setOtherMenuOpen}>
         <DialogContent className="dash-modal sm:max-w-sm">

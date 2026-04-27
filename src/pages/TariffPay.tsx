@@ -4,15 +4,15 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { invokeFunction } from "@/lib/api";
+import { isCardPaymentMethod, type BillingPaymentMethod } from "@/lib/paymentMethods";
+import { CardPaymentEmailDialog } from "@/components/CardPaymentEmailDialog";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import { useDashboardSidebarItems } from "@/hooks/useDashboardSidebarItems";
 import LandingShell from "@/pages/landing/LandingShell";
 import LandingFooter from "@/pages/landing/LandingFooter";
 
-type PaymentMethod = { id: number; type: string; label: string };
-
 type BillingMeta = {
-  payments?: PaymentMethod[];
+  payments?: BillingPaymentMethod[];
   products?: { product_key: string; price: number | null }[];
 };
 
@@ -28,7 +28,7 @@ const MONTHS_LABEL: Record<number, string> = {
   12: "1 год",
 };
 
-const DEFAULT_PAYMENTS: PaymentMethod[] = [
+const DEFAULT_PAYMENTS: BillingPaymentMethod[] = [
   { id: 2, type: "sbp", label: "СБП (QR-код)" },
   { id: 11, type: "card", label: "Оплата картой" },
   { id: 13, type: "crypto", label: "Криптовалюта" },
@@ -53,6 +53,7 @@ const TariffPay = () => {
   const [billingLoading, setBillingLoading] = useState(true);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [paymentLoading, setPaymentLoading] = useState<number | null>(null);
+  const [cardPaymentPending, setCardPaymentPending] = useState<number | null>(null);
 
   useEffect(() => {
     if (!productKey) {
@@ -129,6 +130,19 @@ const TariffPay = () => {
     }
   };
 
+  const handlePaymentMethodClick = (method: BillingPaymentMethod) => {
+    if (isCardPaymentMethod(method)) {
+      setCardPaymentPending(method.id);
+      return;
+    }
+    void handlePayment(method.id);
+  };
+
+  const handleConfirmCardPayment = () => {
+    if (cardPaymentPending === null) return;
+    void handlePayment(cardPaymentPending);
+  };
+
   const loading = userLoading || billingLoading;
   const error = userError ?? billingError;
 
@@ -185,7 +199,7 @@ const TariffPay = () => {
                           type="button"
                           className="btn btn--ghost btn--wide pay-page__method"
                           disabled={paymentLoading !== null || !userUuid}
-                          onClick={() => handlePayment(m.id)}
+                          onClick={() => handlePaymentMethodClick(m)}
                         >
                           {paymentLoading === m.id ? (
                             <Loader2 className="pay-page__spinner pay-page__spinner--sm" aria-label="Загрузка" />
@@ -204,6 +218,15 @@ const TariffPay = () => {
       </main>
 
       <LandingFooter />
+
+      <CardPaymentEmailDialog
+        open={cardPaymentPending !== null}
+        loading={paymentLoading === cardPaymentPending}
+        onOpenChange={(open) => {
+          if (!open && paymentLoading === null) setCardPaymentPending(null);
+        }}
+        onConfirm={handleConfirmCardPayment}
+      />
     </LandingShell>
   );
 };
