@@ -7,7 +7,7 @@
  * Встроенный режим: div#onlineSupportContainer внутри страницы (кнопка скрыта).
  */
 
-const VISITOR_NAME = "220v";
+const SITE_NAME = import.meta.env.VITE_SITE_NAME?.trim() || "220v";
 const TALKME_WIDGET_HASH = "d1845a025366171ec550f455fd14c266";
 
 let talkMeCloseFollowUpId: ReturnType<typeof window.setTimeout> | null = null;
@@ -20,11 +20,17 @@ function clearTalkMeCloseFollowUp(): void {
 }
 
 /** Однократно вставляет support.js (как в стандартном коде Talk-Me). */
-export function ensureTalkMeScript(): void {
-  if (document.getElementById("supportScript")) return;
+export function ensureTalkMeScript(options?: { clientId?: string }): void {
+  const clientId = typeof options?.clientId === "string" ? options.clientId.trim() : "";
 
-  const w = window as Window & { TalkMeSetup?: { language?: string } };
-  w.TalkMeSetup = { ...w.TalkMeSetup, language: "ru" };
+  const w = window as Window & { TalkMeSetup?: { language?: string; clientId?: string } };
+  w.TalkMeSetup = {
+    ...w.TalkMeSetup,
+    language: "ru",
+    ...(clientId ? { clientId } : {}),
+  };
+
+  if (document.getElementById("supportScript")) return;
 
   const d = document;
   const m = "TalkMe";
@@ -150,10 +156,14 @@ function pickDefinedCustom(custom?: TalkMeCustomFields): Record<string, string> 
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+export function buildTalkMeVisitorName(): string {
+  return SITE_NAME;
+}
+
 function buildTalkMeClientInfo(options?: OpenTalkMeChatOptions): Record<string, unknown> {
   const email = typeof options?.email === "string" ? options.email.trim() : "";
   const params: Record<string, unknown> = {
-    name: VISITOR_NAME,
+    name: buildTalkMeVisitorName(),
   };
   if (email) {
     params.email = email;

@@ -1124,6 +1124,16 @@ app.post("/api/talkme/client-search", async (req, res) => {
   }
 });
 
+app.post("/api/talkme/client-id", (req, res) => {
+  const { email } = req.body || {};
+  const trimmedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+  if (!trimmedEmail) {
+    return res.status(400).json({ error: "email is required" });
+  }
+
+  return res.json({ clientId: syntheticClientIdFromEmail(trimmedEmail) });
+});
+
 app.post("/api/talkme/messages", async (req, res) => {
   try {
     const { clientId, searchId, afterId, limit: rawLimit } = req.body;

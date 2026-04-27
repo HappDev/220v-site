@@ -4,7 +4,12 @@ import { Loader2, Send } from "lucide-react";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import { useDashboardSidebarItems } from "@/hooks/useDashboardSidebarItems";
 import { apiBase } from "@/lib/api";
-import { buildTalkMeCustomFields } from "@/lib/talkme";
+import {
+  buildTalkMeCustomFields,
+  buildTalkMeVisitorName,
+  ensureTalkMeScript,
+  setTalkMeClientInfo,
+} from "@/lib/talkme";
 import { getVpnTalkmeProfileRaw } from "@/lib/vpnStorage";
 import LandingFooter from "@/pages/landing/LandingFooter";
 import LandingShell from "@/pages/landing/LandingShell";
@@ -25,6 +30,10 @@ type ClientSearchResponse = {
     name?: string;
     email?: string;
   }>;
+};
+
+type ClientIdResponse = {
+  clientId?: string;
 };
 
 type MessagesResponse = {
@@ -165,6 +174,38 @@ const Chat = () => {
 
   useEffect(() => {
     if (!email) return;
+
+    let cancelled = false;
+
+    postJson<ClientIdResponse>("/talkme/client-id", { email })
+      .then((data) => {
+        if (cancelled) return;
+        const syntheticClientId = typeof data.clientId === "string" ? data.clientId.trim() : "";
+        if (!syntheticClientId) return;
+
+        setClientId((prev) => prev || syntheticClientId);
+        ensureTalkMeScript({ clientId: syntheticClientId });
+
+        const syncClientInfo = () => {
+          if (cancelled) return;
+          setTalkMeClientInfo({
+            email,
+            custom: readTalkMeCustomFields(),
+          });
+        };
+        syncClientInfo();
+        window.setTimeout(syncClientInfo, 800);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [email]);
+
+  useEffect(() => {
+    if (!email) return;
+
     let cancelled = false;
     fetch(`${apiBase}/announcement`)
       .then((r) => r.json() as Promise<{ text?: unknown }>)
@@ -191,7 +232,7 @@ const Chat = () => {
       .then((data) => {
         if (cancelled) return;
         const client = Array.isArray(data.clients) ? data.clients[0] : null;
-        setClientId(client?.clientId || "");
+        setClientId((prev) => client?.clientId || prev);
         setSearchId(typeof client?.searchId === "number" ? client.searchId : null);
       })
       .catch((err) => {
@@ -247,7 +288,7 @@ const Chat = () => {
       const data = await postJson<SendResponse>("/talkme/send", {
         text,
         email,
-        name: email,
+        name: buildTalkMeVisitorName(),
         clientId: clientId || undefined,
         custom: readTalkMeCustomFields(),
       });
@@ -296,10 +337,13 @@ const Chat = () => {
             ) : null}
 
             <div className="app-page__eyebrow">Поддержка 220v</div>
-            <h1 className="app-page__title">Чат с поддержкой через REST API.</h1>
+            <h1 className="app-page__title">Чат с поддержкой</h1>
             <p className="app-page__subtitle">
-              Сообщения отправляются напрямую в Talk-Me через защищённый backend-proxy. Если виджет не загрузился,
-              этот чат продолжит работать.
+              Если по какой то причине чат не работает, попробуйте написать нам на почту{" "}
+              <a href="mailto:support@220v.shop" className="support-meta__link">
+                support@220v.shop
+              </a>
+              .
             </p>
 
             <div className="support-layout support2-layout">
