@@ -910,7 +910,7 @@ app.post("/api/billing/checkout", async (req, res) => {
   }
 });
 
-// ── Talk-Me REST API proxy (for /support2 chat) ──
+// ── Talk-Me REST API proxy (for /chat) ──
 
 const TALKME_API_BASE = "https://lcab.talk-me.ru/json/v1.0";
 
@@ -1442,7 +1442,7 @@ app.post("/api/talkme/dialog-status", async (req, res) => {
  * In-memory регистр «оператор печатает для клиента X».
  *
  * Поскольку Talk-Me REST не предоставляет ни `getTypingStatus`, ни webhook-события
- * на typing, а наш UI `Support2.tsx` не использует виджет Talk-Me — индикатор
+ * на typing, а наш UI `Chat.tsx` не использует виджет Talk-Me — индикатор
  * «оператор печатает…» приходится моделировать на нашей стороне:
  *   - каждый вызов `POST /api/talkme/send-typing` обновляет запись
  *     `{clientId → expiresAt}` (помимо проксирования в Talk-Me),
@@ -1491,7 +1491,7 @@ function getOperatorTyping(clientId) {
  *   - `ttl` (int, default 30) — длительность имитации в секундах.
  *
  * Помимо проксирования в Talk-Me, обновляет внутренний регистр
- * `operatorTypingState` — его читает наш `Support2.tsx`, чтобы показать
+ * `operatorTypingState` — его читает наш `Chat.tsx`, чтобы показать
  * пользователю анимированный индикатор «Оператор печатает…».
  */
 app.post("/api/talkme/send-typing", async (req, res) => {
@@ -1557,7 +1557,7 @@ app.post("/api/talkme/send-typing", async (req, res) => {
 /**
  * Возвращает локальное состояние «оператор печатает для клиента X», которое
  * обновляется при вызовах `POST /api/talkme/send-typing`. Используется
- * `Support2.tsx` для отрисовки typing-индикатора в кастомном UI чата.
+ * `Chat.tsx` для отрисовки typing-индикатора в кастомном UI чата.
  *
  * Тело запроса: `{ clientId: string }`.
  * Ответ: `{ typing: bool, operatorLogin: string | null, secondsLeft: number }`.

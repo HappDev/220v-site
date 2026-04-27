@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import PaySuccess from "./pages/PaySuccess";
 import PayFail from "./pages/PayFail";
 import Support from "./pages/Support";
+import Chat from "./pages/Chat";
 import Policy from "./pages/Policy";
 import Price from "./pages/Price";
 import Tariff from "./pages/Tariff";
@@ -82,10 +83,10 @@ const App = () => (
             }
           />
           <Route
-            path="/support2"
+            path="/chat"
             element={
               <RequireVpnAuth>
-                <Support />
+                <Chat />
               </RequireVpnAuth>
             }
           />

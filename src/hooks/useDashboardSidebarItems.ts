@@ -170,8 +170,8 @@ export function useDashboardSidebarItems(): DashboardSidebarData {
         key: "support",
         label: "Поддержка",
         icon: LifeBuoy,
-        onClick: () => navigate("/support"),
-        match: ["/support", "/support2"],
+        onClick: () => navigate("/chat"),
+        match: ["/support", "/chat"],
       },
       {
         key: "other",
