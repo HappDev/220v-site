@@ -22,10 +22,39 @@ type TariffOption = {
   featured: boolean;
 };
 
+const readEnvPrice = (value: string | undefined, fallback: number) => {
+  const price = Number(value);
+  return Number.isFinite(price) && price > 0 ? price : fallback;
+};
+
+const TARIFF_FALLBACK_PRICES = {
+  sub_1m: readEnvPrice(import.meta.env.VITE_TARIFF_PRICE_SUB_1M, 450),
+  sub_6m: readEnvPrice(import.meta.env.VITE_TARIFF_PRICE_SUB_6M, 2295),
+  sub_12m: readEnvPrice(import.meta.env.VITE_TARIFF_PRICE_SUB_12M, 3780),
+};
+
 const TARIFF_OPTIONS: TariffOption[] = [
-  { months: 1, productKey: "sub_1m", label: "1 месяц", fallbackPrice: 450, featured: false },
-  { months: 6, productKey: "sub_6m", label: "6 месяцев", fallbackPrice: 2295, featured: true },
-  { months: 12, productKey: "sub_12m", label: "1 год", fallbackPrice: 3780, featured: false },
+  {
+    months: 1,
+    productKey: "sub_1m",
+    label: "1 месяц",
+    fallbackPrice: TARIFF_FALLBACK_PRICES.sub_1m,
+    featured: false,
+  },
+  {
+    months: 6,
+    productKey: "sub_6m",
+    label: "6 месяцев",
+    fallbackPrice: TARIFF_FALLBACK_PRICES.sub_6m,
+    featured: true,
+  },
+  {
+    months: 12,
+    productKey: "sub_12m",
+    label: "1 год",
+    fallbackPrice: TARIFF_FALLBACK_PRICES.sub_12m,
+    featured: false,
+  },
 ];
 
 const formatRub = (value: number) => value.toLocaleString("ru-RU");

@@ -27,8 +27,8 @@ export function CardPaymentEmailDialog({
         <DialogHeader>
           <DialogTitle>Важная информация</DialogTitle>
           <DialogDescription>
-            При оплате в системе tribute пожалуйста <strong>указывайте аналогичный email</strong> для оплаты. Иначе
-            платеж может потерятся.
+            При оплате в системе Tribute, пожалуйста, <strong>указывайте тот же email</strong>. Иначе платёж может
+            потеряться.
           </DialogDescription>
         </DialogHeader>
 
