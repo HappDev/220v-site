@@ -1623,8 +1623,72 @@ body.landing-no-scroll { overflow: hidden; }
 .landing-root .support2-chat__form textarea::placeholder {
   color: var(--muted);
 }
-.landing-root .support2-chat__send {
+.landing-root .support2-chat__actions {
   align-self: end;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.landing-root .support2-chat__file-input {
+  display: none;
+}
+.landing-root .support2-chat__attach {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(198, 255, 61, 0.28);
+  border-radius: 999px;
+  background: rgba(198, 255, 61, 0.08);
+  color: var(--accent);
+  cursor: pointer;
+  transition: border-color .2s ease, background .2s ease, transform .2s ease;
+}
+.landing-root .support2-chat__attach:hover:not(:disabled) {
+  border-color: rgba(198, 255, 61, 0.55);
+  background: rgba(198, 255, 61, 0.14);
+  transform: translateY(-1px);
+}
+.landing-root .support2-chat__attach:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.landing-root .support2-chat__file {
+  max-width: 220px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted-2);
+  font-size: 13px;
+  font-weight: 700;
+}
+.landing-root .support2-chat__file span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.landing-root .support2-chat__file button {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--muted-2);
+  cursor: pointer;
+}
+.landing-root .support2-chat__send {
   min-height: 48px;
 }
 .landing-root .support2-chat__sync {
@@ -1895,6 +1959,13 @@ body.landing-no-scroll { overflow: hidden; }
   .landing-root .support2-chat__badges {
     justify-content: flex-start;
     max-width: none;
+  }
+  .landing-root .support2-chat__actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .landing-root .support2-chat__file {
+    max-width: calc(100% - 58px);
   }
   .landing-root .support2-chat__send {
     width: 100%;

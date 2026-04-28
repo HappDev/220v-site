@@ -1,5 +1,5 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Send } from "lucide-react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, Paperclip, Send, X } from "lucide-react";
 
 import DashboardSidebar from "@/components/DashboardSidebar";
 import { useDashboardSidebarItems } from "@/hooks/useDashboardSidebarItems";
@@ -45,6 +45,12 @@ type SendResponse = {
   clientId?: string;
 };
 
+type ChatAttachmentUploadResponse = {
+  url?: string;
+  path?: string;
+  fileName?: string;
+};
+
 type DialogStatusResponse = {
   statusLabel?: string | null;
 };
@@ -83,6 +89,34 @@ async function postJson<T>(path: string, body: Record<string, unknown>): Promise
   return (parsed ?? {}) as T;
 }
 
+async function uploadChatAttachment(file: File): Promise<ChatAttachmentUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${apiBase}/support/chat-attachment`, {
+    method: "POST",
+    body: formData,
+  });
+
+  const text = await res.text();
+  let parsed: unknown = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = { error: text || "Invalid JSON" };
+  }
+
+  if (!res.ok) {
+    const message =
+      parsed && typeof parsed === "object" && "error" in parsed && typeof parsed.error === "string"
+        ? parsed.error
+        : `Upload failed (${res.status})`;
+    throw new Error(message);
+  }
+
+  return (parsed ?? {}) as ChatAttachmentUploadResponse;
+}
+
 function formatMessageTime(value: string): string {
   if (!value) return "";
   const date = new Date(value);
@@ -116,7 +150,9 @@ const Chat = () => {
   const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [onlineCount, setOnlineCount] = useState<number | null>(null);
   const [operatorTyping, setOperatorTyping] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const clientLookupBody = useMemo(() => {
     if (searchId) return { searchId };
@@ -265,14 +301,28 @@ const Chat = () => {
     messagesEndRef.current?.scrollIntoView({ block: "end" });
   }, [messages, operatorTyping]);
 
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setSelectedFile(event.target.files?.[0] ?? null);
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const text = draft.trim();
-    if (!email || !text || sending) return;
+    const fileToSend = selectedFile;
+    if (!email || sending || (!text && !fileToSend)) return;
+
+    const optimisticText = [text, fileToSend ? `Файл: ${fileToSend.name}` : ""].filter(Boolean).join("\n");
 
     const optimisticMessage: ChatMessage = {
       id: -Date.now(),
-      text,
+      text: optimisticText,
       sender: "client",
       operatorName: null,
       dateTime: new Date().toISOString(),
@@ -280,13 +330,20 @@ const Chat = () => {
     };
 
     setDraft("");
+    clearSelectedFile();
     setMessages((prev) => [...prev, optimisticMessage]);
     setSending(true);
     setError(null);
 
     try {
+      const attachment = fileToSend ? await uploadChatAttachment(fileToSend) : null;
+      if (fileToSend && !attachment?.url) {
+        throw new Error("Файл загружен, но сервер не вернул ссылку");
+      }
       const data = await postJson<SendResponse>("/talkme/send", {
         text,
+        attachmentUrl: attachment?.url || undefined,
+        attachmentName: attachment?.fileName || fileToSend?.name || undefined,
         email,
         name: buildTalkMeVisitorName(),
         clientId: clientId || undefined,
@@ -311,6 +368,7 @@ const Chat = () => {
       await refreshMeta();
     } catch (err) {
       setDraft(text);
+      setSelectedFile(fileToSend);
       setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id));
       setError(err instanceof Error ? err.message : "Не удалось отправить сообщение");
     } finally {
@@ -419,14 +477,42 @@ const Chat = () => {
                       }
                     }}
                   />
-                  <button
-                    type="submit"
-                    className="btn btn--primary support2-chat__send"
-                    disabled={!email || !draft.trim() || sending}
-                  >
-                    {sending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send size={16} />}
-                    Отправить
-                  </button>
+                  <div className="support2-chat__actions">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,video/*,.zip"
+                      className="support2-chat__file-input"
+                      onChange={handleFileChange}
+                      disabled={!email || sending}
+                    />
+                    <button
+                      type="button"
+                      className="support2-chat__attach"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={!email || sending}
+                      aria-label="Прикрепить файл"
+                      title="Прикрепить файл"
+                    >
+                      <Paperclip size={18} aria-hidden="true" />
+                    </button>
+                    {selectedFile ? (
+                      <div className="support2-chat__file" title={selectedFile.name}>
+                        <span>{selectedFile.name}</span>
+                        <button type="button" onClick={clearSelectedFile} aria-label="Убрать файл" disabled={sending}>
+                          <X size={14} aria-hidden="true" />
+                        </button>
+                      </div>
+                    ) : null}
+                    <button
+                      type="submit"
+                      className="btn btn--primary support2-chat__send"
+                      disabled={!email || (!draft.trim() && !selectedFile) || sending}
+                    >
+                      {sending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send size={16} />}
+                      Отправить
+                    </button>
+                  </div>
                 </form>
 
                 {messagesLoading ? <p className="support2-chat__sync">Обновляем сообщения...</p> : null}
