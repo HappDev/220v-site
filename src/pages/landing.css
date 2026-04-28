@@ -1237,7 +1237,7 @@ body.landing-no-scroll { overflow: hidden; }
   position: relative;
   z-index: 1;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 14px;
   padding: 14px 16px;
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -1285,6 +1285,7 @@ body.landing-no-scroll { overflow: hidden; }
 .landing-root .instruction-primary-button {
   width: min(100%, 340px);
   margin-top: 10px;
+  margin-left: 8px;
   border-radius: 14px;
   background: var(--accent);
   color: #0a0a0a;
@@ -1604,8 +1605,8 @@ body.landing-no-scroll { overflow: hidden; }
 }
 .landing-root .support2-chat__form textarea {
   width: 100%;
-  resize: vertical;
-  min-height: 72px;
+  resize: none;
+  min-height: 48px;
   max-height: 180px;
   padding: 13px 14px;
   border: 1px solid var(--border);
@@ -1613,6 +1614,8 @@ body.landing-no-scroll { overflow: hidden; }
   background: rgba(255, 255, 255, 0.04);
   color: var(--text);
   font: inherit;
+  line-height: 20px;
+  overflow-y: hidden;
   outline: none;
   transition: border-color .2s ease, box-shadow .2s ease;
 }

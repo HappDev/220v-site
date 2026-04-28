@@ -153,12 +153,25 @@ const Chat = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const clientLookupBody = useMemo(() => {
     if (searchId) return { searchId };
     if (clientId) return { clientId };
     return null;
   }, [clientId, searchId]);
+
+  const resizeDraftTextarea = useCallback((textarea: HTMLTextAreaElement | null) => {
+    if (!textarea) return;
+
+    const { maxHeight } = window.getComputedStyle(textarea);
+    const parsedMaxHeight = Number.parseFloat(maxHeight);
+    const hasMaxHeight = Number.isFinite(parsedMaxHeight);
+
+    textarea.style.height = "auto";
+    textarea.style.height = `${hasMaxHeight ? Math.min(textarea.scrollHeight, parsedMaxHeight) : textarea.scrollHeight}px`;
+    textarea.style.overflowY = hasMaxHeight && textarea.scrollHeight > parsedMaxHeight ? "auto" : "hidden";
+  }, []);
 
   const loadMessages = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
@@ -301,6 +314,10 @@ const Chat = () => {
     messagesEndRef.current?.scrollIntoView({ block: "end" });
   }, [messages, operatorTyping]);
 
+  useEffect(() => {
+    resizeDraftTextarea(textareaRef.current);
+  }, [draft, resizeDraftTextarea]);
+
   const clearSelectedFile = () => {
     setSelectedFile(null);
     if (fileInputRef.current) {
@@ -409,9 +426,6 @@ const Chat = () => {
                 <div className="support2-chat__header">
                   <div>
                     <h2 className="support-card__title">Диалог с оператором</h2>
-                    <p className="support-card__subtitle">
-                      {email ? `Вы пишете как ${email}` : "Подключаем профиль пользователя..."}
-                    </p>
                   </div>
                   <div className="support2-chat__badges" aria-label="Статус чата">
                     <span className="support2-chat__badge">
@@ -466,10 +480,14 @@ const Chat = () => {
 
                 <form className="support2-chat__form" onSubmit={handleSubmit}>
                   <textarea
+                    ref={textareaRef}
                     value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
+                    onChange={(event) => {
+                      setDraft(event.target.value);
+                      resizeDraftTextarea(event.currentTarget);
+                    }}
                     placeholder="Опишите вопрос..."
-                    rows={3}
+                    rows={1}
                     disabled={!email || sending}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {

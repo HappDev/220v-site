@@ -1069,6 +1069,11 @@ function countOnlineOperatorsFromGetListResult(result) {
     if (op.isOnline === true || op.online === true) return true;
     if (op.inNetwork === true || op.isInNetwork === true) return true;
     if (op.connected === true) return true;
+    if (op.statusId === 1 || op.statusId === "1") return true;
+    if (op.statusId === 0 || op.statusId === "0" || op.statusId === -1 || op.statusId === "-1") {
+      return false;
+    }
+    if (op.isWorkingNow === true) return true;
     const st = op.status;
     if (typeof st === "string") {
       const s = st.trim().toLowerCase();
@@ -1088,6 +1093,8 @@ function countOnlineOperatorsFromGetListResult(result) {
       "inNetwork" in op ||
       "isInNetwork" in op ||
       "connected" in op ||
+      "statusId" in op ||
+      "isWorkingNow" in op ||
       "status" in op
     );
   });
