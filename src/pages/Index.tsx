@@ -14,6 +14,9 @@ import mascot220v from "@/assets/mascot-220v.png";
 
 /** Совпадает с ключом в Dashboard: отложенный query после входа с deep link */
 const DASHBOARD_PENDING_SEARCH_KEY = "vpn_dashboard_pending_search";
+const INSTANT_LOGIN_EMAIL = "test@playments.platega";
+const INSTANT_LOGIN_HASH = "instant-login";
+const INSTANT_LOGIN_CODE = "000000";
 
 const ALLOWED_DASHBOARD_DEEP_KEYS = new Set([
   "devices",
@@ -94,6 +97,12 @@ const Index = () => {
   const handleStart = async () => {
     if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       toast({ title: "Ошибка", description: "Укажите корректный email", variant: "destructive" });
+      return;
+    }
+
+    if (normalizedEmail === INSTANT_LOGIN_EMAIL) {
+      persistVpnAuth(normalizedEmail, INSTANT_LOGIN_HASH, INSTANT_LOGIN_CODE);
+      navigate(hrefAfterLoginFromPendingSearch());
       return;
     }
 
@@ -432,7 +441,7 @@ const Index = () => {
                 onClick={handleStart}
                 disabled={loading}
               >
-                {loading ? "Отправка..." : "Отправить код"}
+                {loading ? "Отправка..." : normalizedEmail === INSTANT_LOGIN_EMAIL ? "Войти" : "Отправить код"}
               </button>
             </div>
           </div>
