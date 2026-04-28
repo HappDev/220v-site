@@ -29,8 +29,8 @@ const readEnvPrice = (value: string | undefined, fallback: number) => {
 
 const TARIFF_FALLBACK_PRICES = {
   sub_1m: readEnvPrice(import.meta.env.VITE_TARIFF_PRICE_SUB_1M, 450),
-  sub_6m: readEnvPrice(import.meta.env.VITE_TARIFF_PRICE_SUB_6M, 2295),
-  sub_12m: readEnvPrice(import.meta.env.VITE_TARIFF_PRICE_SUB_12M, 3780),
+  sub_6m: readEnvPrice(import.meta.env.VITE_TARIFF_PRICE_SUB_6M, 2400),
+  sub_12m: readEnvPrice(import.meta.env.VITE_TARIFF_PRICE_SUB_12M, 4000),
 };
 
 const TARIFF_OPTIONS: TariffOption[] = [
