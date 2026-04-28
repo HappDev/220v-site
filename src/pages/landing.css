@@ -1587,6 +1587,68 @@ body.landing-no-scroll { overflow: hidden; }
   font-size: 15px;
   line-height: 1.55;
 }
+.landing-root .support2-message__attachments {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.landing-root .support2-message__attachments:first-child {
+  margin-top: 0;
+}
+.landing-root .support2-message__attachment-item {
+  display: contents;
+}
+.landing-root .support2-attachment {
+  color: var(--text);
+}
+.landing-root .support2-attachment--image,
+.landing-root .support2-attachment--video {
+  display: grid;
+  gap: 7px;
+  text-decoration: none;
+}
+.landing-root .support2-attachment--image img,
+.landing-root .support2-attachment--video video {
+  width: min(360px, 100%);
+  max-height: 320px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.24);
+  object-fit: contain;
+}
+.landing-root .support2-attachment--image span,
+.landing-root .support2-attachment--video a {
+  color: var(--muted-2);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.landing-root .support2-attachment--file {
+  width: fit-content;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted-2);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.landing-root .support2-attachment--file span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.landing-root .support2-attachment--file small {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
 .landing-root .support2-chat__typing,
 .landing-root .support2-chat__sync {
   color: var(--muted);

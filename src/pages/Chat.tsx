@@ -14,6 +14,15 @@ import { getVpnTalkmeProfileRaw } from "@/lib/vpnStorage";
 import LandingFooter from "@/pages/landing/LandingFooter";
 import LandingShell from "@/pages/landing/LandingShell";
 
+type ChatAttachmentKind = "image" | "video" | "zip" | "file";
+
+type ChatAttachment = {
+  url: string;
+  fileName: string;
+  mimeType?: string;
+  kind?: ChatAttachmentKind;
+};
+
 type ChatMessage = {
   id: number;
   text: string;
@@ -21,6 +30,7 @@ type ChatMessage = {
   operatorName: string | null;
   dateTime: string;
   status: string;
+  attachments?: ChatAttachment[];
 };
 
 type ClientSearchResponse = {
@@ -49,6 +59,8 @@ type ChatAttachmentUploadResponse = {
   url?: string;
   path?: string;
   fileName?: string;
+  mimeType?: string;
+  kind?: ChatAttachmentKind;
 };
 
 type DialogStatusResponse = {
@@ -124,6 +136,146 @@ function formatMessageTime(value: string): string {
   return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
+const imageExtensions = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"]);
+const videoExtensions = new Set(["mp4", "mov", "webm", "m4v", "avi", "mkv", "ogg"]);
+
+function getFileExtension(value: string): string {
+  const cleanValue = value.split(/[?#]/)[0] || "";
+  const match = cleanValue.match(/\.([a-z0-9]+)$/i);
+  return match?.[1]?.toLowerCase() || "";
+}
+
+function getFileNameFromUrl(url: string): string {
+  try {
+    const { pathname } = new URL(url);
+    const name = decodeURIComponent(pathname.split("/").filter(Boolean).pop() || "");
+    return name || "Вложение";
+  } catch {
+    return "Вложение";
+  }
+}
+
+function getAttachmentKind(
+  attachment: Pick<ChatAttachment, "fileName" | "kind" | "mimeType" | "url">,
+): ChatAttachmentKind {
+  if (attachment.kind === "image" || attachment.kind === "video" || attachment.kind === "zip") {
+    return attachment.kind;
+  }
+
+  const mimeType = attachment.mimeType?.toLowerCase() || "";
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.includes("zip")) return "zip";
+
+  const extension = getFileExtension(attachment.fileName) || getFileExtension(attachment.url);
+  if (imageExtensions.has(extension)) return "image";
+  if (videoExtensions.has(extension)) return "video";
+  if (extension === "zip") return "zip";
+
+  return "file";
+}
+
+function isSupportAttachmentUrl(url: string): boolean {
+  try {
+    return new URL(url).pathname.includes("/support/chat-attachment/");
+  } catch {
+    return false;
+  }
+}
+
+function singleUrlFromLine(line: string): string | null {
+  const trimmed = line.trim();
+  if (!/^https?:\/\/\S+$/i.test(trimmed)) return null;
+  return trimmed;
+}
+
+function parseMessageForDisplay(message: ChatMessage): { text: string; attachments: ChatAttachment[] } {
+  const attachments = [...(message.attachments ?? [])];
+  const textLines: string[] = [];
+  const lines = message.text.split(/\r?\n/);
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const fileNameMatch = line.trim().match(/^Файл:\s*(.+)$/i);
+    const nextUrl = index + 1 < lines.length ? singleUrlFromLine(lines[index + 1]) : null;
+
+    if (fileNameMatch && nextUrl) {
+      const fileName = fileNameMatch[1].trim() || getFileNameFromUrl(nextUrl);
+      attachments.push({
+        url: nextUrl,
+        fileName,
+        kind: getAttachmentKind({ url: nextUrl, fileName }),
+      });
+      index += 1;
+      continue;
+    }
+
+    const lineUrl = singleUrlFromLine(line);
+    if (lineUrl) {
+      const fileName = getFileNameFromUrl(lineUrl);
+      const kind = getAttachmentKind({ url: lineUrl, fileName });
+      if (kind !== "file" || isSupportAttachmentUrl(lineUrl)) {
+        attachments.push({ url: lineUrl, fileName, kind });
+        continue;
+      }
+    }
+
+    textLines.push(line);
+  }
+
+  const uniqueAttachments = attachments.filter(
+    (attachment, index, all) => all.findIndex((candidate) => candidate.url === attachment.url) === index,
+  );
+
+  return {
+    text: textLines.join("\n").trim(),
+    attachments: uniqueAttachments,
+  };
+}
+
+function ChatAttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
+  const kind = getAttachmentKind(attachment);
+  const fileName = attachment.fileName || getFileNameFromUrl(attachment.url);
+
+  if (kind === "image") {
+    return (
+      <a
+        className="support2-attachment support2-attachment--image"
+        href={attachment.url}
+        target="_blank"
+        rel="noreferrer"
+      >
+        <img src={attachment.url} alt={fileName} loading="lazy" />
+        <span>{fileName}</span>
+      </a>
+    );
+  }
+
+  if (kind === "video") {
+    return (
+      <div className="support2-attachment support2-attachment--video">
+        <video src={attachment.url} controls preload="metadata" />
+        <a href={attachment.url} target="_blank" rel="noreferrer">
+          {fileName}
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <a
+      className="support2-attachment support2-attachment--file"
+      href={attachment.url}
+      target="_blank"
+      rel="noreferrer"
+    >
+      <Paperclip size={16} aria-hidden="true" />
+      <span>{fileName}</span>
+      {kind === "zip" ? <small>ZIP</small> : null}
+    </a>
+  );
+}
+
 function readTalkMeCustomFields(): ReturnType<typeof buildTalkMeCustomFields> | undefined {
   const raw = getVpnTalkmeProfileRaw();
   if (!raw) return undefined;
@@ -154,6 +306,7 @@ const Chat = () => {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const previewUrlsRef = useRef<Set<string>>(new Set());
 
   const clientLookupBody = useMemo(() => {
     if (searchId) return { searchId };
@@ -315,6 +468,26 @@ const Chat = () => {
   }, [messages, operatorTyping]);
 
   useEffect(() => {
+    const nextPreviewUrls = new Set(
+      messages
+        .flatMap((message) => message.attachments?.map((attachment) => attachment.url) ?? [])
+        .filter((url) => url.startsWith("blob:")),
+    );
+
+    previewUrlsRef.current.forEach((url) => {
+      if (!nextPreviewUrls.has(url)) URL.revokeObjectURL(url);
+    });
+    previewUrlsRef.current = nextPreviewUrls;
+  }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      previewUrlsRef.current.clear();
+    };
+  }, []);
+
+  useEffect(() => {
     resizeDraftTextarea(textareaRef.current);
   }, [draft, resizeDraftTextarea]);
 
@@ -335,15 +508,27 @@ const Chat = () => {
     const fileToSend = selectedFile;
     if (!email || sending || (!text && !fileToSend)) return;
 
-    const optimisticText = [text, fileToSend ? `Файл: ${fileToSend.name}` : ""].filter(Boolean).join("\n");
+    const optimisticAttachment = fileToSend
+      ? {
+          url: URL.createObjectURL(fileToSend),
+          fileName: fileToSend.name,
+          mimeType: fileToSend.type,
+          kind: getAttachmentKind({
+            url: fileToSend.name,
+            fileName: fileToSend.name,
+            mimeType: fileToSend.type,
+          }),
+        }
+      : null;
 
     const optimisticMessage: ChatMessage = {
       id: -Date.now(),
-      text: optimisticText,
+      text,
       sender: "client",
       operatorName: null,
       dateTime: new Date().toISOString(),
       status: "sending",
+      attachments: optimisticAttachment ? [optimisticAttachment] : undefined,
     };
 
     setDraft("");
@@ -452,20 +637,33 @@ const Chat = () => {
                       Подключаемся к Talk-Me...
                     </div>
                   ) : messages.length > 0 ? (
-                    messages.map((message) => (
-                      <article
-                        key={message.id}
-                        className={`support2-message support2-message--${message.sender}`}
-                      >
-                        <div className="support2-message__bubble">
-                          <div className="support2-message__meta">
-                            <span>{message.sender === "operator" ? message.operatorName || "Оператор" : "Вы"}</span>
-                            {message.dateTime ? <time>{formatMessageTime(message.dateTime)}</time> : null}
+                    messages.map((message) => {
+                      const displayMessage = parseMessageForDisplay(message);
+
+                      return (
+                        <article
+                          key={message.id}
+                          className={`support2-message support2-message--${message.sender}`}
+                        >
+                          <div className="support2-message__bubble">
+                            <div className="support2-message__meta">
+                              <span>{message.sender === "operator" ? message.operatorName || "Оператор" : "Вы"}</span>
+                              {message.dateTime ? <time>{formatMessageTime(message.dateTime)}</time> : null}
+                            </div>
+                            {displayMessage.text ? <p>{displayMessage.text}</p> : null}
+                            {displayMessage.attachments.length > 0 ? (
+                              <div className="support2-message__attachments">
+                                {displayMessage.attachments.map((attachment) => (
+                                  <span className="support2-message__attachment-item" key={attachment.url}>
+                                    <ChatAttachmentPreview attachment={attachment} />
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
-                          <p>{message.text}</p>
-                        </div>
-                      </article>
-                    ))
+                        </article>
+                      );
+                    })
                   ) : (
                     <div className="support2-chat__state">
                       Напишите первое сообщение, и мы откроем диалог с оператором.
