@@ -14,7 +14,7 @@ import mascot220v from "@/assets/mascot-220v.png";
 
 /** Совпадает с ключом в Dashboard: отложенный query после входа с deep link */
 const DASHBOARD_PENDING_SEARCH_KEY = "vpn_dashboard_pending_search";
-const INSTANT_LOGIN_EMAIL = "test@playments.platega";
+const INSTANT_LOGIN_EMAIL = "test@payments.platega";
 const INSTANT_LOGIN_HASH = "instant-login";
 const INSTANT_LOGIN_CODE = "000000";
 
