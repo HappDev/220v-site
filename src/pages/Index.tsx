@@ -67,6 +67,7 @@ const Index = () => {
   const [loginOpen, setLoginOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const { toast } = useToast();
@@ -180,6 +181,9 @@ const Index = () => {
             </button>
             <button type="button" className="nav__link" onClick={() => setPricingOpen(true)}>
               Цены
+            </button>
+            <button type="button" className="nav__link" onClick={() => setSupportOpen(true)}>
+              Поддержка
             </button>
           </>
         }
@@ -404,6 +408,18 @@ const Index = () => {
           </a>
           .
         </p>
+      </LandingModal>
+
+      {/* Support modal */}
+      <LandingModal open={supportOpen} onClose={() => setSupportOpen(false)} title="Поддержка">
+        <p>
+          По любым вопросам напишите нам на почту{" "}
+          <a href="mailto:support@220v.shop" className="modal__link">
+            support@220v.shop
+          </a>
+          {", также вы можете написать нам в чат на сайте, для этого необходимо авторизоваться."}
+        </p>
+        <p>Время работы поддержки ежедневно с 05:00 до 01:00 по МСК.</p>
       </LandingModal>
 
       {/* Login modal */}

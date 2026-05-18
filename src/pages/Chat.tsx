@@ -101,6 +101,15 @@ async function postJson<T>(path: string, body: Record<string, unknown>): Promise
   return (parsed ?? {}) as T;
 }
 
+function isTalkMeVisitorNotFoundError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err || "");
+  return /посетитель не найден|visitor not found/i.test(message);
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 async function uploadChatAttachment(file: File): Promise<ChatAttachmentUploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
@@ -292,6 +301,7 @@ const Chat = () => {
   const { email, items, handleLogout } = useDashboardSidebarItems();
   const [announcement, setAnnouncement] = useState<string | null>(null);
   const [clientId, setClientId] = useState("");
+  const [hasTalkMeVisitor, setHasTalkMeVisitor] = useState(false);
   const [searchId, setSearchId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -307,12 +317,14 @@ const Chat = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const previewUrlsRef = useRef<Set<string>>(new Set());
+  const mountedRef = useRef(true);
+  const visitorSyncActiveRef = useRef(false);
 
   const clientLookupBody = useMemo(() => {
     if (searchId) return { searchId };
-    if (clientId) return { clientId };
+    if (clientId && hasTalkMeVisitor) return { clientId };
     return null;
-  }, [clientId, searchId]);
+  }, [clientId, hasTalkMeVisitor, searchId]);
 
   const resizeDraftTextarea = useCallback((textarea: HTMLTextAreaElement | null) => {
     if (!textarea) return;
@@ -344,6 +356,81 @@ const Chat = () => {
       }
     },
     [clientLookupBody],
+  );
+
+  const applyClientSearchResponse = useCallback((data: ClientSearchResponse): boolean => {
+    const client = Array.isArray(data.clients) ? data.clients[0] : null;
+    const foundClientId = typeof client?.clientId === "string" ? client.clientId.trim() : "";
+    const foundSearchId = typeof client?.searchId === "number" ? client.searchId : null;
+    const foundVisitor = Boolean(foundClientId || foundSearchId);
+
+    setClientId((prev) => foundClientId || prev);
+    setSearchId(foundSearchId);
+    setHasTalkMeVisitor(foundVisitor);
+
+    return foundVisitor;
+  }, []);
+
+  const refreshClientLookup = useCallback(async (): Promise<boolean> => {
+    if (!email) return false;
+    const data = await postJson<ClientSearchResponse>("/talkme/client-search", { email });
+    if (!mountedRef.current) return false;
+    return applyClientSearchResponse(data);
+  }, [applyClientSearchResponse, email]);
+
+  const loadMessagesByClientId = useCallback(async (nextClientId: string): Promise<void> => {
+    const messagesData = await postJson<MessagesResponse>("/talkme/messages", {
+      clientId: nextClientId,
+      limit: 200,
+    });
+    if (!mountedRef.current) return;
+    setMessages(Array.isArray(messagesData.messages) ? messagesData.messages : []);
+    setHasTalkMeVisitor(true);
+    setError(null);
+  }, []);
+
+  const syncMessagesAfterVisitorCreation = useCallback(
+    async (nextClientId: string) => {
+      if (visitorSyncActiveRef.current) return;
+      visitorSyncActiveRef.current = true;
+
+      const fastDelaysMs = [1200, 2500, 5000, 8000];
+      const slowIntervalMs = 15000;
+      const warnAfterMs = 60000;
+      const startedAt = Date.now();
+      let warned = false;
+
+      try {
+        for (let attempt = 0; mountedRef.current; attempt += 1) {
+          const delay = attempt < fastDelaysMs.length ? fastDelaysMs[attempt] : slowIntervalMs;
+          await wait(delay);
+          if (!mountedRef.current) return;
+
+          try {
+            await refreshClientLookup();
+            await loadMessagesByClientId(nextClientId);
+            return;
+          } catch (err) {
+            if (!isTalkMeVisitorNotFoundError(err)) {
+              if (mountedRef.current) {
+                setError("Сообщение отправлено, но историю пока не удалось обновить");
+              }
+              return;
+            }
+          }
+
+          if (!warned && Date.now() - startedAt >= warnAfterMs && mountedRef.current) {
+            warned = true;
+            setError(
+              "Сообщение отправлено, но история чата ещё не подгрузилась. Если ответ оператора не появится в течение минуты — обновите страницу.",
+            );
+          }
+        }
+      } finally {
+        visitorSyncActiveRef.current = false;
+      }
+    },
+    [loadMessagesByClientId, refreshClientLookup],
   );
 
   const refreshMeta = useCallback(async () => {
@@ -424,19 +511,11 @@ const Chat = () => {
   }, [email]);
 
   useEffect(() => {
-    if (!email) return;
-
     let cancelled = false;
     setInitialLoading(true);
     setError(null);
 
-    postJson<ClientSearchResponse>("/talkme/client-search", { email })
-      .then((data) => {
-        if (cancelled) return;
-        const client = Array.isArray(data.clients) ? data.clients[0] : null;
-        setClientId((prev) => client?.clientId || prev);
-        setSearchId(typeof client?.searchId === "number" ? client.searchId : null);
-      })
+    refreshClientLookup()
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Не удалось подключиться к чату");
       })
@@ -447,7 +526,7 @@ const Chat = () => {
     return () => {
       cancelled = true;
     };
-  }, [email]);
+  }, [refreshClientLookup]);
 
   useEffect(() => {
     void loadMessages({ silent: true });
@@ -481,7 +560,10 @@ const Chat = () => {
   }, [messages]);
 
   useEffect(() => {
+    mountedRef.current = true;
+
     return () => {
+      mountedRef.current = false;
       previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       previewUrlsRef.current.clear();
     };
@@ -553,19 +635,23 @@ const Chat = () => {
       });
 
       const nextClientId = data.clientId || clientId;
-      if (data.clientId) setClientId(data.clientId);
+      if (data.clientId) {
+        setClientId(data.clientId);
+      }
       try {
         if (nextClientId) {
-          const messagesData = await postJson<MessagesResponse>("/talkme/messages", {
-            clientId: nextClientId,
-            limit: 200,
-          });
-          setMessages(Array.isArray(messagesData.messages) ? messagesData.messages : []);
+          await loadMessagesByClientId(nextClientId);
         } else {
           await loadMessages({ silent: true });
         }
-      } catch {
-        setError("Сообщение отправлено, но историю пока не удалось обновить");
+      } catch (err) {
+        if (isTalkMeVisitorNotFoundError(err) && nextClientId) {
+          setHasTalkMeVisitor(false);
+          setError(null);
+          void syncMessagesAfterVisitorCreation(nextClientId);
+        } else {
+          setError("Сообщение отправлено, но историю пока не удалось обновить");
+        }
       }
       await refreshMeta();
     } catch (err) {
@@ -634,7 +720,7 @@ const Chat = () => {
                   {initialLoading ? (
                     <div className="support2-chat__state">
                       <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
-                      Подключаемся к Talk-Me...
+                      Подключаемся к чату...
                     </div>
                   ) : messages.length > 0 ? (
                     messages.map((message) => {
