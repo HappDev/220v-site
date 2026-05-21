@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { invokeFunction } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import { isCardPaymentMethod, type BillingPaymentMethod } from "@/lib/paymentMethods";
 import { CardPaymentEmailDialog } from "@/components/CardPaymentEmailDialog";
 import DashboardSidebar from "@/components/DashboardSidebar";
@@ -68,7 +68,7 @@ const TariffPay = () => {
     setBillingError(null);
     (async () => {
       try {
-        const { data, error } = await invokeFunction<BillingMeta>("billing/meta", {});
+        const { data, error } = await apiGet<BillingMeta>("/billing/meta");
         if (cancelled) return;
         if (error) {
           setBillingError(error.message ?? "Не удалось загрузить тарифы");
@@ -104,8 +104,7 @@ const TariffPay = () => {
     if (!userUuid || !productKey) return;
     setPaymentLoading(paymentMethod);
     try {
-      const { data, error: fnError } = await invokeFunction("billing/checkout", {
-        userUuid,
+      const { data, error: fnError } = await apiPost<{ payment_url?: string }>("/checkout", {
         product_key: productKey,
         payment_method: paymentMethod,
       });

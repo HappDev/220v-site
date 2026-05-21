@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { invokeFunction } from "@/lib/api";
-import { consumeVpnPendingRedirect, getVpnAuthEmail, persistVpnAuth } from "@/lib/vpnStorage";
+import { apiGet, apiPost } from "@/lib/api";
+import { consumeVpnPendingRedirect, persistChatCompatCache } from "@/lib/vpnStorage";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 
 import LandingShell from "@/pages/landing/LandingShell";
@@ -14,10 +14,6 @@ import mascot220v from "@/assets/mascot-220v.png";
 
 /** Совпадает с ключом в Dashboard: отложенный query после входа с deep link */
 const DASHBOARD_PENDING_SEARCH_KEY = "vpn_dashboard_pending_search";
-const INSTANT_LOGIN_EMAIL = "test@payments.platega";
-const INSTANT_LOGIN_HASH = "instant-login";
-const INSTANT_LOGIN_CODE = "000000";
-
 const ALLOWED_DASHBOARD_DEEP_KEYS = new Set([
   "devices",
   "subscription",
@@ -61,7 +57,6 @@ type LoginStep = "email" | "verify";
 
 const Index = () => {
   const [email, setEmail] = useState("");
-  const [hash, setHash] = useState("");
   const [code, setCode] = useState("");
   const [loginStep, setLoginStep] = useState<LoginStep>("email");
   const [loginOpen, setLoginOpen] = useState(false);
@@ -76,17 +71,24 @@ const Index = () => {
   const normalizedEmail = email.trim().toLowerCase();
 
   useEffect(() => {
-    if (getVpnAuthEmail()) {
-      navigate(hrefAfterLoginFromPendingSearch(), { replace: true });
-      return;
-    }
-    setSessionReady(true);
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await apiGet<{ user?: unknown }>("/me");
+      if (cancelled) return;
+      if (!error && data?.user) {
+        navigate(hrefAfterLoginFromPendingSearch(), { replace: true });
+        return;
+      }
+      setSessionReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [navigate]);
 
   const openLogin = () => {
     setLoginStep("email");
     setCode("");
-    setHash("");
     setLoginOpen(true);
   };
 
@@ -101,22 +103,15 @@ const Index = () => {
       return;
     }
 
-    if (normalizedEmail === INSTANT_LOGIN_EMAIL) {
-      persistVpnAuth(normalizedEmail, INSTANT_LOGIN_HASH, INSTANT_LOGIN_CODE);
-      navigate(hrefAfterLoginFromPendingSearch());
-      return;
-    }
-
     setLoading(true);
     try {
-      const { data, error } = await invokeFunction("send-code", {
+      const { data, error } = await apiPost<{ ok?: boolean; error?: string }>("/auth/send-code", {
         email: normalizedEmail,
       });
 
       if (error) throw error;
 
-      if (data?.hash) {
-        setHash(data.hash);
+      if (data?.ok) {
         setLoginStep("verify");
         toast({
           title: "✅ Код отправлен!",
@@ -134,24 +129,22 @@ const Index = () => {
   };
 
   const handleVerify = async () => {
-    if (!code || code.length < 4) {
+    if (!code || code.length < 6) {
       toast({ title: "Ошибка", description: "Введите код подтверждения", variant: "destructive" });
       return;
     }
 
     setLoading(true);
     try {
-      const { data, error } = await invokeFunction("send-code", {
+      const { data, error } = await apiPost<{ user?: unknown; error?: string }>("/auth/verify", {
         email: normalizedEmail,
-        hash,
         code,
-        action: "verify",
       });
 
       if (error) throw error;
 
-      if (data?.verified) {
-        persistVpnAuth(normalizedEmail, hash, code);
+      if (data?.user) {
+        persistChatCompatCache({ email: normalizedEmail });
         navigate(hrefAfterLoginFromPendingSearch());
       } else {
         toast({ title: "Ошибка", description: data?.error || "Неверный код", variant: "destructive" });

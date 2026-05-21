@@ -8,7 +8,8 @@
 - **Backend (API):** Node.js + Express (`api/index.mjs`)
 - **VPN-панель:** [Remnawave](https://docs.rw) (`REMNAWAVE_URL`) — чтение профиля, устройства, ссылки подписки
 - **RMW:** вход в дашборд (`POST /v1/auth/session`) и оплата (`POST /v1/billing/checkout`); применение тарифа и webhook платёжного провайдера выполняются на стороне RMW
-- **Деплой:** Docker Compose (nginx + api)
+- **Сессии / OTP:** Redis + AWS SES SMTP
+- **Деплой:** Docker Compose (redis + api + nginx)
 
 ## Запуск
 
@@ -23,8 +24,10 @@ docker compose up -d --build
 
 | Переменная | Описание |
 |---|---|
-| `SEND_CODE_API_URL` | URL PHP-скрипта отправки кода на email |
-| `SEND_CODE_API_TOKEN` | Bearer-токен для скрипта отправки кода |
+| `REDIS_PASSWORD` / `REDIS_URL` | Redis для сессий, OTP и rate-limit |
+| `SES_SMTP_*` / `MAIL_FROM_*` | Отправка OTP через AWS SES |
+| `ADMIN_REDIS_TOKEN` | Токен для `/admin/redis` |
+| `ADMIN_BASIC_USER` / `ADMIN_BASIC_PASSWORD` | Basic Auth nginx для админки |
 | `REMNAWAVE_URL` | URL панели Remnawave |
 | `REMNAWAVE_TOKEN` | API-токен Remnawave (роль API) |
 | `RMW_API_URL` | Базовый URL сервиса RMW (без завершающего `/`) |
@@ -39,7 +42,7 @@ docker compose up -d --build
 
 ## Вход в дашборд (сессия через RMW)
 
-После подтверждения кода дашборд вызывает `POST /api/remnawave-proxy` с `action: "check-or-create"`. BFF проксирует в **RMW**:
+После `POST /api/auth/verify` BFF создаёт cookie-сессию (`v220_sid` / `v220_csrf`) и загружает профиль через **RMW**:
 
 `POST {RMW_API_URL}/v1/auth/session`  
 Заголовки: `Content-Type: application/json`, `X-Api-Key: RMW_API_KEY`  
@@ -65,8 +68,8 @@ docker compose up -d --build
        │
        ▼
   ┌──────────────────────┐       ┌─────────────────────┐
-  │ POST /api/billing/    │──────▶│ RMW                 │
-  │ checkout              │       │ POST /v1/billing/   │
+  │ POST /api/checkout    │──────▶│ RMW                 │
+  │ (cookie + CSRF)       │       │ POST /v1/billing/   │
   │ (BFF, X-Api-Key       │       │ checkout            │
   │  к RMW на сервере)    │◀──────│ + Idempotency-Key   │
   └──────────────────────┘       └─────────────────────┘

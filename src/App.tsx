@@ -18,6 +18,7 @@ import TrafficPay from "./pages/TrafficPay";
 import Instructions from "./pages/Instructions";
 import Terms from "./pages/Terms";
 import NotFound from "./pages/NotFound";
+import AdminRedis from "./pages/AdminRedis";
 import RequireVpnAuth from "./components/RequireVpnAuth";
 
 const queryClient = new QueryClient();
@@ -30,7 +31,15 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
-          <Route path="/dashboard" element={<Dashboard />} />
+          <Route
+            path="/dashboard"
+            element={
+              <RequireVpnAuth>
+                <Dashboard />
+              </RequireVpnAuth>
+            }
+          />
+          <Route path="/admin/redis" element={<AdminRedis />} />
           <Route path="/policy" element={<Policy />} />
           <Route path="/price" element={<Price />} />
           <Route

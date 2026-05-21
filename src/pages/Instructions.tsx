@@ -35,7 +35,7 @@ import { useDashboardSidebarItems } from "@/hooks/useDashboardSidebarItems";
 import LandingShell from "@/pages/landing/LandingShell";
 import LandingFooter from "@/pages/landing/LandingFooter";
 
-import { invokeFunction } from "@/lib/api";
+import { apiGet } from "@/lib/api";
 import {
   getVpnAuthEmail,
   getVpnSubscriptionUrl,
@@ -346,10 +346,7 @@ const Instructions = () => {
     let cancelled = false;
     (async () => {
       try {
-        const { data, error } = await invokeFunction("remnawave-proxy", {
-          action: "check-or-create",
-          email: currentEmail,
-        });
+        const { data, error } = await apiGet<{ user?: { subscriptionUrl?: unknown } }>("/me");
         if (cancelled || error) return;
         const user = (data as { user?: { subscriptionUrl?: unknown } } | null)?.user;
         const url =

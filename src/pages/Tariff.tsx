@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { invokeFunction } from "@/lib/api";
+import { apiGet } from "@/lib/api";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import { useDashboardSidebarItems } from "@/hooks/useDashboardSidebarItems";
 import LandingShell from "@/pages/landing/LandingShell";
@@ -68,7 +68,7 @@ const Tariff = () => {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data } = await invokeFunction<BillingMeta>("billing/meta", {});
+      const { data } = await apiGet<BillingMeta>("/billing/meta");
       if (cancelled) return;
       const next: Record<string, number> = {};
       if (data?.products) {

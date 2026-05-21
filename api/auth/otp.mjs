@@ -1,0 +1,127 @@
+import { timingSafeEqual } from "node:crypto";
+import { OTP_MAX_TRIES, OTP_TTL_SEC } from "../config.mjs";
+import { redis } from "../redis.mjs";
+import { hashCode } from "./crypto.mjs";
+import { otpCooldownKey, otpKey } from "./keys.mjs";
+
+function parseOtpPayload(raw) {
+  if (!raw || typeof raw !== "string") {
+    return { parsed: null, status: "missing" };
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { parsed: null, status: "non_object" };
+    }
+    return { parsed, status: "ok" };
+  } catch {
+    return { parsed: null, status: "invalid_json" };
+  }
+}
+
+export async function acquireOtpCooldown(email, owner, ttlSec = 60) {
+  return redis.set(otpCooldownKey(email), owner, "EX", ttlSec, "NX");
+}
+
+export async function putOtp(email, codeHash, owner) {
+  await redis.set(
+    otpKey(email),
+    JSON.stringify({ hash: codeHash, tries: 0, owner }),
+    "EX",
+    OTP_TTL_SEC,
+  );
+}
+
+export async function getOtpDebugSnapshot(email) {
+  const key = otpKey(email);
+  const [ttlSec, type] = await Promise.all([redis.ttl(key), redis.type(key)]);
+  const raw = type === "string" ? await redis.get(key) : null;
+  const { parsed, status } =
+    type === "string"
+      ? parseOtpPayload(raw)
+      : { parsed: null, status: type === "none" ? "missing" : "wrong_type" };
+  return {
+    exists: type !== "none",
+    ttlSec,
+    type,
+    tries: status === "ok" ? Number(parsed.tries) || 0 : undefined,
+    hasOwner: status === "ok" ? typeof parsed.owner === "string" && parsed.owner.length > 0 : false,
+    parseStatus: status,
+  };
+}
+
+export async function getCooldownDebugSnapshot(email) {
+  const key = otpCooldownKey(email);
+  const [exists, ttlSec, type] = await Promise.all([redis.exists(key), redis.ttl(key), redis.type(key)]);
+  return {
+    exists: exists === 1,
+    ttlSec,
+    type,
+  };
+}
+
+export async function clearOtpAndCooldown(email, owner) {
+  await redis.eval(
+    `
+local otpKey = KEYS[1]
+local cooldownKey = KEYS[2]
+local owner = ARGV[1]
+local rawOtp = redis.call("GET", otpKey)
+if rawOtp then
+  local ok, otp = pcall(cjson.decode, rawOtp)
+  if ok and type(otp) == "table" and otp["owner"] == owner then
+    redis.call("DEL", otpKey)
+  end
+end
+if redis.call("GET", cooldownKey) == owner then
+  redis.call("DEL", cooldownKey)
+end
+return 1
+`,
+    2,
+    otpKey(email),
+    otpCooldownKey(email),
+    owner,
+  );
+}
+
+/**
+ * @returns {Promise<{ ok: true } | { ok: false, reason: string, status: number, tries?: number }>}
+ */
+export async function consumeOtp(email, code) {
+  const key = otpKey(email);
+  const raw = await redis.get(key);
+  if (!raw) {
+    return { ok: false, reason: "missing", status: 400 };
+  }
+
+  let otp;
+  try {
+    otp = JSON.parse(raw);
+  } catch {
+    await redis.del(key);
+    return { ok: false, reason: "corrupt", status: 400 };
+  }
+
+  const expectedHash = hashCode(code);
+  const storedHash = otp.hash || "";
+  const hashBufA = Buffer.from(expectedHash, "hex");
+  const hashBufB = Buffer.from(storedHash, "hex");
+  const codeOk =
+    hashBufA.length === hashBufB.length &&
+    hashBufA.length > 0 &&
+    timingSafeEqual(hashBufA, hashBufB);
+
+  if (!codeOk) {
+    const tries = (otp.tries || 0) + 1;
+    if (tries >= OTP_MAX_TRIES) {
+      await redis.del(key);
+      return { ok: false, reason: "too_many_tries", status: 410, tries };
+    }
+    await redis.set(key, JSON.stringify({ ...otp, tries }), "EX", OTP_TTL_SEC);
+    return { ok: false, reason: "bad_code", status: 400, tries };
+  }
+
+  await redis.del(key);
+  return { ok: true };
+}

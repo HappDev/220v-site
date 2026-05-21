@@ -22,14 +22,14 @@ import {
   LifeBuoy,
   MoreHorizontal,
 } from "lucide-react";
-import { invokeFunction } from "@/lib/api";
+import { apiDelete, apiGet, apiPost } from "@/lib/api";
+import { useSession } from "@/hooks/useSession";
 import {
-  clearVpnAuthAndCaches,
-  getVpnAuthEmail,
+  clearChatCompatCache,
   getVpnSubscriptionUrl,
+  persistChatCompatCache,
   setVpnSubscriptionUrl,
   setVpnTalkmeProfileJson,
-  VPN_STORAGE_KEY_PREFIX,
 } from "@/lib/vpnStorage";
 import { isCardPaymentMethod, type BillingPaymentMethod } from "@/lib/paymentMethods";
 import { toast } from "sonner";
@@ -222,7 +222,7 @@ const Dashboard = () => {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data, error } = await invokeFunction<BillingMeta>("billing/meta", {});
+      const { data, error } = await apiGet<BillingMeta>("/billing/meta");
       if (cancelled) return;
       if (error) {
         // не блокируем весь дашборд, просто оставим fallback значения ниже
@@ -237,27 +237,13 @@ const Dashboard = () => {
       cancelled = true;
     };
   }, []);
-  const email = getVpnAuthEmail();
+  const { status: sessionStatus, email: sessionEmail } = useSession();
 
   useEffect(() => {
-    const syncAuth = () => {
-      if (!getVpnAuthEmail()) navigate("/", { replace: true });
-    };
-    const onStorage = (e: StorageEvent) => {
-      if (e.storageArea && e.storageArea !== localStorage) return;
-      if (e.key !== null && !e.key.startsWith(VPN_STORAGE_KEY_PREFIX)) return;
-      syncAuth();
-    };
-    const onFocusOrVis = () => syncAuth();
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("focus", onFocusOrVis);
-    document.addEventListener("visibilitychange", onFocusOrVis);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocusOrVis);
-      document.removeEventListener("visibilitychange", onFocusOrVis);
-    };
-  }, [navigate]);
+    if (sessionStatus === "guest") navigate("/", { replace: true });
+  }, [sessionStatus, navigate]);
+
+  const email = sessionEmail;
 
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
@@ -279,10 +265,7 @@ const Dashboard = () => {
 
     const fetchUser = async () => {
       try {
-        const { data, error: fnError } = await invokeFunction("remnawave-proxy", {
-          action: "check-or-create",
-          email,
-        });
+        const { data, error: fnError } = await apiGet<{ user?: unknown; error?: string; exists?: boolean }>("/me");
 
         if (fnError) throw fnError;
         if (data?.user) {
@@ -294,17 +277,21 @@ const Dashboard = () => {
           if (normalizedUser.subscriptionUrl) {
             setVpnSubscriptionUrl(normalizedUser.subscriptionUrl);
           }
-          setVpnTalkmeProfileJson(
-            JSON.stringify({
-              usedTrafficBytes: normalizedUser.usedTrafficBytes,
-              trafficLimitBytes: normalizedUser.trafficLimitBytes,
-              expireAt: normalizedUser.expireAt,
-              currentDevices: normalizedUser.currentDevices,
-              devicesLimit: normalizedUser.devicesLimit,
-              tariff: normalizedUser.tariff,
-              plan: normalizedUser.plan,
-            }),
-          );
+          const talkmeJson = JSON.stringify({
+            usedTrafficBytes: normalizedUser.usedTrafficBytes,
+            trafficLimitBytes: normalizedUser.trafficLimitBytes,
+            expireAt: normalizedUser.expireAt,
+            currentDevices: normalizedUser.currentDevices,
+            devicesLimit: normalizedUser.devicesLimit,
+            tariff: normalizedUser.tariff,
+            plan: normalizedUser.plan,
+          });
+          setVpnTalkmeProfileJson(talkmeJson);
+          persistChatCompatCache({
+            email,
+            subscriptionUrl: normalizedUser.subscriptionUrl,
+            talkmeProfileJson: talkmeJson,
+          });
           setUserData(normalizedUser);
         } else {
           setError(data?.error || "Не удалось получить данные");
@@ -328,10 +315,7 @@ const Dashboard = () => {
     if (!userData?.userUuid) return;
     setDevicesLoading(true);
     try {
-      const { data, error } = await invokeFunction("remnawave-proxy", {
-        action: "get-devices",
-        userUuid: userData.userUuid,
-      });
+      const { data, error } = await apiGet<{ devices?: Device[]; total?: number }>("/me/devices");
       if (!error && data?.devices) {
         setDevices(data.devices);
         const devicesCount = Array.isArray(data.devices) ? data.devices.length : 0;
@@ -428,11 +412,9 @@ const Dashboard = () => {
     if (!userData?.userUuid) return;
     setDeletingHwid(hwid);
     try {
-      const { data, error } = await invokeFunction("remnawave-proxy", {
-        action: "delete-device",
-        userUuid: userData.userUuid,
-        hwid,
-      });
+      const { data, error } = await apiDelete<{ success?: boolean }>(
+        `/me/devices/${encodeURIComponent(hwid)}`,
+      );
       if (!error && data?.success) {
         setDevices((prev) => prev.filter((d) => d.hwid !== hwid));
         setUserData((prev) =>
@@ -480,8 +462,7 @@ const Dashboard = () => {
     }
     setPaymentLoading(paymentMethod);
     try {
-      const { data, error: fnError } = await invokeFunction("billing/checkout", {
-        userUuid: userData.userUuid,
+      const { data, error: fnError } = await apiPost<{ payment_url?: string }>("/checkout", {
         product_key,
         payment_method: paymentMethod,
       });
@@ -515,8 +496,9 @@ const Dashboard = () => {
     void handleTrafficPayment(cardPaymentPending);
   };
 
-  const handleLogout = () => {
-    clearVpnAuthAndCaches();
+  const handleLogout = async () => {
+    await apiPost("/auth/logout");
+    clearChatCompatCache();
     navigate("/");
   };
 

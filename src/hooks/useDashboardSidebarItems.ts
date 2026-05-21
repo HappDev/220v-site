@@ -10,10 +10,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { invokeFunction } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
+import { useSession } from "@/hooks/useSession";
 import {
-  clearVpnAuthAndCaches,
-  getVpnAuthEmail,
+  clearChatCompatCache,
   getVpnTalkmeProfileRaw,
 } from "@/lib/vpnStorage";
 import type { DashboardSidebarItem } from "@/components/DashboardSidebar";
@@ -26,7 +26,6 @@ type SidebarUser = {
 const PAID_TARIFF_CODES = new Set(["1month", "6month", "12month"]);
 const PAID_PLAN_LABELS = new Set(["1 месяц", "6 месяцев", "12 месяцев"]);
 
-/** Временно: показать пункт «Другое» в меню — поставить true. */
 export const SIDEBAR_SHOW_OTHER = false;
 
 function resolveIsPremium(user: unknown): boolean {
@@ -41,11 +40,6 @@ function resolveIsPremium(user: unknown): boolean {
   );
 }
 
-/**
- * Премиум‑флаг из закэшированного профиля (его пишет Dashboard после загрузки).
- * Используется как стартовое значение хука, чтобы пункт «Купить трафик» не мигал
- * при переходах между страницами, пока идёт фоновый запрос к remnawave-proxy.
- */
 function readCachedIsPremium(): boolean {
   try {
     const raw = getVpnTalkmeProfileRaw();
@@ -66,34 +60,29 @@ export type DashboardSidebarData = {
   userError: string | null;
 };
 
-/** Shared sidebar wiring for auth-only pages besides /dashboard. */
 export function useDashboardSidebarItems(): DashboardSidebarData {
   const navigate = useNavigate();
-  const [email, setEmail] = useState<string | null>(() => getVpnAuthEmail());
+  const { status: sessionStatus, email, user: sessionUser } = useSession();
   const [userInfo, setUserInfo] = useState<SidebarUser>(() => ({
-    userUuid: null,
-    isPremium: readCachedIsPremium(),
+    userUuid: sessionUser?.userUuid ?? null,
+    isPremium: readCachedIsPremium() || resolveIsPremium(sessionUser),
   }));
-  const [userLoading, setUserLoading] = useState(true);
+  const [userLoading, setUserLoading] = useState(sessionStatus === "checking");
   const [userError, setUserError] = useState<string | null>(null);
 
   useEffect(() => {
-    const current = getVpnAuthEmail();
-    if (!current) {
+    if (sessionStatus === "guest") {
       navigate("/", { replace: true });
       return;
     }
-    setEmail(current);
+    if (sessionStatus !== "authed") return;
 
     let cancelled = false;
     setUserLoading(true);
     setUserError(null);
     (async () => {
       try {
-        const { data, error } = await invokeFunction("remnawave-proxy", {
-          action: "check-or-create",
-          email: current,
-        });
+        const { data, error } = await apiGet<{ user?: unknown }>("/me");
         if (cancelled) return;
         if (error) {
           setUserError(error.message ?? "Не удалось получить данные");
@@ -110,9 +99,7 @@ export function useDashboardSidebarItems(): DashboardSidebarData {
         });
       } catch (err) {
         if (!cancelled) {
-          setUserError(
-            err instanceof Error ? err.message : "Ошибка загрузки данных",
-          );
+          setUserError(err instanceof Error ? err.message : "Ошибка загрузки данных");
         }
       } finally {
         if (!cancelled) setUserLoading(false);
@@ -122,10 +109,11 @@ export function useDashboardSidebarItems(): DashboardSidebarData {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [navigate, sessionStatus]);
 
-  const handleLogout = () => {
-    clearVpnAuthAndCaches();
+  const handleLogout = async () => {
+    await apiPost("/auth/logout");
+    clearChatCompatCache();
     navigate("/");
   };
 
@@ -185,7 +173,7 @@ export function useDashboardSidebarItems(): DashboardSidebarData {
   }, [navigate, userInfo.isPremium]);
 
   return {
-    email,
+    email: email || null,
     items,
     handleLogout,
     userUuid: userInfo.userUuid,
