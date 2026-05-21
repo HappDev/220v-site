@@ -24,6 +24,9 @@ const ALLOWED_DASHBOARD_DEEP_KEYS = new Set([
   "about",
 ]);
 
+const OTP_SLOT_CLASS =
+  "otp-slot h-[3.6rem] w-[3.6rem] rounded-md border border-input font-bold bg-white first:rounded-md last:rounded-md";
+
 function hrefAfterLoginFromPendingSearch(): string {
   // 1) Универсальный pending redirect (сохраняется RequireVpnAuth при попытке
   //    открыть защищённую страницу без авторизации).
@@ -129,7 +132,7 @@ const Index = () => {
   };
 
   const handleVerify = async () => {
-    if (!code || code.length < 6) {
+    if (!code || code.length < 5) {
       toast({ title: "Ошибка", description: "Введите код подтверждения", variant: "destructive" });
       return;
     }
@@ -457,14 +460,11 @@ const Index = () => {
         ) : (
           <div className="login-card" style={{ background: "transparent", border: 0, padding: 0, boxShadow: "none" }}>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-              <InputOTP maxLength={6} value={code} onChange={setCode}>
-                <InputOTPGroup>
-                  <InputOTPSlot index={0} className="h-12 w-12 text-lg font-bold bg-white text-black" />
-                  <InputOTPSlot index={1} className="h-12 w-12 text-lg font-bold bg-white text-black" />
-                  <InputOTPSlot index={2} className="h-12 w-12 text-lg font-bold bg-white text-black" />
-                  <InputOTPSlot index={3} className="h-12 w-12 text-lg font-bold bg-white text-black" />
-                  <InputOTPSlot index={4} className="h-12 w-12 text-lg font-bold bg-white text-black" />
-                  <InputOTPSlot index={5} className="h-12 w-12 text-lg font-bold bg-white text-black" />
+              <InputOTP maxLength={5} value={code} onChange={setCode}>
+                <InputOTPGroup className="gap-3">
+                  {[0, 1, 2, 3, 4].map((index) => (
+                    <InputOTPSlot key={index} index={index} className={OTP_SLOT_CLASS} />
+                  ))}
                 </InputOTPGroup>
               </InputOTP>
             </div>
@@ -473,7 +473,7 @@ const Index = () => {
                 type="button"
                 className="btn btn--primary btn--wide"
                 onClick={handleVerify}
-                disabled={loading || code.length < 6}
+                disabled={loading || code.length < 5}
               >
                 {loading ? "Проверка..." : "Подтвердить"}
               </button>

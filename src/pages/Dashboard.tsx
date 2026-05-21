@@ -239,19 +239,12 @@ const Dashboard = () => {
   }, []);
   const { status: sessionStatus, email: sessionEmail } = useSession();
 
-  useEffect(() => {
-    if (sessionStatus === "guest") navigate("/", { replace: true });
-  }, [sessionStatus, navigate]);
-
   const email = sessionEmail;
 
   useEffect(() => {
-    const sp = new URLSearchParams(location.search);
-    if (sp.get("support") === "1") {
-      navigate("/support", { replace: true });
-      return;
-    }
-    if (!email) {
+    if (sessionStatus === "checking") return;
+
+    if (sessionStatus === "guest") {
       if (location.search) {
         try {
           sessionStorage.setItem(DASHBOARD_PENDING_SEARCH_KEY, location.search);
@@ -262,6 +255,14 @@ const Dashboard = () => {
       navigate("/", { replace: true });
       return;
     }
+
+    const sp = new URLSearchParams(location.search);
+    if (sp.get("support") === "1") {
+      navigate("/support", { replace: true });
+      return;
+    }
+
+    if (!email) return;
 
     const fetchUser = async () => {
       try {
@@ -304,7 +305,7 @@ const Dashboard = () => {
     };
 
     fetchUser();
-  }, [navigate, email, location.search]);
+  }, [navigate, email, location.search, location.pathname, sessionStatus]);
 
   const clearDashboardSearch = useCallback(() => {
     if (!location.search) return;

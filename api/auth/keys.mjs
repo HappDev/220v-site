@@ -12,6 +12,9 @@ export const SCAN_PATTERNS = {
   rlSendCodeEmail: `${PREFIX}rl:sendcode:email:*`,
   rlVerifyIp: `${PREFIX}rl:verify:ip:*`,
   rlCheckoutSid: `${PREFIX}rl:checkout:sid:*`,
+  rlTalkmeIp: `${PREFIX}rl:talkme:ip:*`,
+  rlTalkmeSid: `${PREFIX}rl:talkme:sid:*`,
+  rlChatUploadSid: `${PREFIX}rl:chatupload:sid:*`,
 };
 
 export const RL_PREFIXES = {
@@ -19,6 +22,9 @@ export const RL_PREFIXES = {
   sendCodeEmail: `${PREFIX}rl:sendcode:email:`,
   verifyIp: `${PREFIX}rl:verify:ip:`,
   checkoutSession: `${PREFIX}rl:checkout:sid:`,
+  talkmeIp: `${PREFIX}rl:talkme:ip:`,
+  talkmeSession: `${PREFIX}rl:talkme:sid:`,
+  chatUploadSession: `${PREFIX}rl:chatupload:sid:`,
 };
 
 export const KEY_PREFIXES = {

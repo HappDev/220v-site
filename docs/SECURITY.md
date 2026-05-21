@@ -28,14 +28,26 @@
 | CSRF | Double-submit cookie + header check; CSRF token also stored in Redis session |
 | SSRF via payment redirect | `BILLING_ALLOWED_HOSTS` whitelist for `payment_url` from RMW |
 | Redis memory DoS | `maxmemory 2gb`, `noeviction`, rate limits on send-code (IP + email) and verify (IP) |
+| Talk-Me proxy abuse | All `/api/talkme/*` and chat upload require `requireSession` + CSRF; email/clientId bound to session; IP + session rate limits |
+| Stored XSS via chat uploads | SVG uploads rejected; static attachment responses use `nosniff` + restrictive CSP |
 | Internal lateral movement | Redis password, disabled dangerous commands, internal network only |
 | PII in debug logs | No agent debug ingest in production API code |
 
 ## OTP
 
-- 6-digit code generated server-side; only SHA-256 hash stored in Redis (`otp:{email}`), TTL 10 minutes.
+- 5-digit code generated server-side; only SHA-256 hash stored in Redis (`otp:{email}`), TTL 10 minutes.
 - Max 5 verification attempts; 60s cooldown between send-code requests per email.
 - Hash comparison uses `crypto.timingSafeEqual`.
+
+## Support chat (Talk-Me proxy)
+
+- Custom chat UI (`/chat`) uses backend proxy routes under `/api/talkme/*` and `/api/support/chat-attachment`.
+- All mutating chat routes require the same session model as `/api/me`: cookie `v220_sid` + header `X-CSRF-Token`.
+- `email` and Talk-Me `clientId` are derived from `req.session.email` on the server; client-supplied identity fields are ignored or validated.
+- Rate limits: 120 req / 15 min per IP and 300 req / 15 min per session on Talk-Me routes; 20 uploads / hour per session on chat attachment upload.
+- SVG files are rejected at upload. Uploaded files are served with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: default-src 'none'`.
+- `attachmentUrl` in `/api/talkme/send` must point to a file uploaded via `/api/support/chat-attachment` on the same host.
+- Server-side Talk-Me token: set `TALKME_API_TOKEN` only (do not expose via `VITE_*` build args).
 
 ## Email (AWS SES)
 

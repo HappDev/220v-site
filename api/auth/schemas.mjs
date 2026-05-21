@@ -12,5 +12,5 @@ export const sendCodeSchema = z.object({ email: emailSchema });
 
 export const verifySchema = z.object({
   email: emailSchema,
-  code: z.string().trim().regex(/^\d{6}$/, "Code must be 6 digits"),
+  code: z.string().trim().regex(/^\d{5}$/, "Code must be 5 digits"),
 });

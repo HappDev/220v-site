@@ -18,13 +18,13 @@ before(async () => {
 
 describe("mailer input validation", () => {
   it("rejects non-string email", async () => {
-    const result = await sendOtpEmail({ email: 123, code: "123456" });
+    const result = await sendOtpEmail({ email: 123, code: "12345" });
     assert.equal(result.ok, false);
     assert.equal(result.error, "invalid_recipient");
   });
 
   it("rejects malformed email", async () => {
-    const result = await sendOtpEmail({ email: "not-an-email", code: "123456" });
+    const result = await sendOtpEmail({ email: "not-an-email", code: "12345" });
     assert.equal(result.ok, false);
     assert.equal(result.error, "invalid_recipient");
   });
@@ -52,7 +52,7 @@ describe("mailer input validation", () => {
     delete process.env.SES_SMTP_PASSWORD;
     _resetMailerForTests();
     try {
-      const result = await sendOtpEmail({ email: "user@example.com", code: "123456" });
+      const result = await sendOtpEmail({ email: "user@example.com", code: "12345" });
       assert.equal(result.ok, false);
       assert.equal(result.error, "mailer_not_configured");
     } finally {

@@ -28,5 +28,5 @@ export function hashCode(code) {
 }
 
 export function generateOtpCode() {
-  return String(randomInt(0, 1_000_000)).padStart(6, "0");
+  return String(randomInt(0, 100_000)).padStart(5, "0");
 }

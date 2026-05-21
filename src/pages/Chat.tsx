@@ -1,9 +1,10 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Paperclip, Send, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import DashboardSidebar from "@/components/DashboardSidebar";
 import { useDashboardSidebarItems } from "@/hooks/useDashboardSidebarItems";
-import { apiBase } from "@/lib/api";
+import { apiBase, apiPost, apiUploadForm } from "@/lib/api";
 import {
   buildTalkMeCustomFields,
   buildTalkMeVisitorName,
@@ -75,30 +76,41 @@ type OperatorTypingResponse = {
   typing?: boolean;
 };
 
-async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
-  const res = await fetch(`${apiBase}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+async function talkmePost<T>(
+  path: string,
+  body: Record<string, unknown>,
+  onAuthError?: () => void,
+): Promise<T> {
+  const { data, error, status } = await apiPost<T>(path, body);
+  if (error) {
+    if ((status === 401 || status === 403) && onAuthError) {
+      onAuthError();
+    }
+    throw error;
+  }
+  return (data ?? {}) as T;
+}
 
-  const text = await res.text();
-  let parsed: unknown = null;
-  try {
-    parsed = text ? JSON.parse(text) : null;
-  } catch {
-    parsed = { error: text || "Invalid JSON" };
+async function uploadChatAttachment(
+  file: File,
+  onAuthError?: () => void,
+): Promise<ChatAttachmentUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const { data, error, status } = await apiUploadForm<ChatAttachmentUploadResponse>(
+    "/support/chat-attachment",
+    formData,
+  );
+
+  if (error) {
+    if ((status === 401 || status === 403) && onAuthError) {
+      onAuthError();
+    }
+    throw error;
   }
 
-  if (!res.ok) {
-    const message =
-      parsed && typeof parsed === "object" && "error" in parsed && typeof parsed.error === "string"
-        ? parsed.error
-        : `Request failed (${res.status})`;
-    throw new Error(message);
-  }
-
-  return (parsed ?? {}) as T;
+  return (data ?? {}) as ChatAttachmentUploadResponse;
 }
 
 function isTalkMeVisitorNotFoundError(err: unknown): boolean {
@@ -110,34 +122,6 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-async function uploadChatAttachment(file: File): Promise<ChatAttachmentUploadResponse> {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const res = await fetch(`${apiBase}/support/chat-attachment`, {
-    method: "POST",
-    body: formData,
-  });
-
-  const text = await res.text();
-  let parsed: unknown = null;
-  try {
-    parsed = text ? JSON.parse(text) : null;
-  } catch {
-    parsed = { error: text || "Invalid JSON" };
-  }
-
-  if (!res.ok) {
-    const message =
-      parsed && typeof parsed === "object" && "error" in parsed && typeof parsed.error === "string"
-        ? parsed.error
-        : `Upload failed (${res.status})`;
-    throw new Error(message);
-  }
-
-  return (parsed ?? {}) as ChatAttachmentUploadResponse;
-}
-
 function formatMessageTime(value: string): string {
   if (!value) return "";
   const date = new Date(value);
@@ -145,7 +129,7 @@ function formatMessageTime(value: string): string {
   return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
-const imageExtensions = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"]);
+const imageExtensions = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "avif"]);
 const videoExtensions = new Set(["mp4", "mov", "webm", "m4v", "avi", "mkv", "ogg"]);
 
 function getFileExtension(value: string): string {
@@ -298,6 +282,7 @@ function readTalkMeCustomFields(): ReturnType<typeof buildTalkMeCustomFields> | 
 }
 
 const Chat = () => {
+  const navigate = useNavigate();
   const { email, items, handleLogout } = useDashboardSidebarItems();
   const [announcement, setAnnouncement] = useState<string | null>(null);
   const [clientId, setClientId] = useState("");
@@ -319,6 +304,11 @@ const Chat = () => {
   const previewUrlsRef = useRef<Set<string>>(new Set());
   const mountedRef = useRef(true);
   const visitorSyncActiveRef = useRef(false);
+
+  const handleAuthError = useCallback(() => {
+    setError("Сессия истекла. Войдите снова.");
+    navigate("/", { replace: true });
+  }, [navigate]);
 
   const clientLookupBody = useMemo(() => {
     if (searchId) return { searchId };
@@ -343,10 +333,14 @@ const Chat = () => {
       if (!clientLookupBody) return;
       if (!silent) setMessagesLoading(true);
       try {
-        const data = await postJson<MessagesResponse>("/talkme/messages", {
-          ...clientLookupBody,
-          limit: 200,
-        });
+        const data = await talkmePost<MessagesResponse>(
+          "/talkme/messages",
+          {
+            ...clientLookupBody,
+            limit: 200,
+          },
+          handleAuthError,
+        );
         setMessages(Array.isArray(data.messages) ? data.messages : []);
         setError(null);
       } catch (err) {
@@ -355,7 +349,7 @@ const Chat = () => {
         if (!silent) setMessagesLoading(false);
       }
     },
-    [clientLookupBody],
+    [clientLookupBody, handleAuthError],
   );
 
   const applyClientSearchResponse = useCallback((data: ClientSearchResponse): boolean => {
@@ -373,21 +367,25 @@ const Chat = () => {
 
   const refreshClientLookup = useCallback(async (): Promise<boolean> => {
     if (!email) return false;
-    const data = await postJson<ClientSearchResponse>("/talkme/client-search", { email });
+    const data = await talkmePost<ClientSearchResponse>("/talkme/client-search", {}, handleAuthError);
     if (!mountedRef.current) return false;
     return applyClientSearchResponse(data);
-  }, [applyClientSearchResponse, email]);
+  }, [applyClientSearchResponse, handleAuthError]);
 
   const loadMessagesByClientId = useCallback(async (nextClientId: string): Promise<void> => {
-    const messagesData = await postJson<MessagesResponse>("/talkme/messages", {
-      clientId: nextClientId,
-      limit: 200,
-    });
+    const messagesData = await talkmePost<MessagesResponse>(
+      "/talkme/messages",
+      {
+        clientId: nextClientId,
+        limit: 200,
+      },
+      handleAuthError,
+    );
     if (!mountedRef.current) return;
     setMessages(Array.isArray(messagesData.messages) ? messagesData.messages : []);
     setHasTalkMeVisitor(true);
     setError(null);
-  }, []);
+  }, [handleAuthError]);
 
   const syncMessagesAfterVisitorCreation = useCallback(
     async (nextClientId: string) => {
@@ -435,14 +433,14 @@ const Chat = () => {
 
   const refreshMeta = useCallback(async () => {
     const requests: Promise<void>[] = [
-      postJson<OperatorListResponse>("/talkme/operator-list", {})
+      talkmePost<OperatorListResponse>("/talkme/operator-list", {}, handleAuthError)
         .then((data) => setOnlineCount(typeof data.onlineCount === "number" ? data.onlineCount : null))
         .catch(() => setOnlineCount(null)),
     ];
 
     if (clientLookupBody) {
       requests.push(
-        postJson<DialogStatusResponse>("/talkme/dialog-status", clientLookupBody)
+        talkmePost<DialogStatusResponse>("/talkme/dialog-status", clientLookupBody, handleAuthError)
           .then((data) => setStatusLabel(data.statusLabel || null))
           .catch(() => setStatusLabel(null)),
       );
@@ -450,7 +448,11 @@ const Chat = () => {
 
     if (clientId) {
       requests.push(
-        postJson<OperatorTypingResponse>("/talkme/operator-typing-status", { clientId })
+        talkmePost<OperatorTypingResponse>(
+          "/talkme/operator-typing-status",
+          { clientId },
+          handleAuthError,
+        )
           .then((data) => setOperatorTyping(data.typing === true))
           .catch(() => setOperatorTyping(false)),
       );
@@ -459,14 +461,14 @@ const Chat = () => {
     }
 
     await Promise.all(requests);
-  }, [clientId, clientLookupBody]);
+  }, [clientId, clientLookupBody, handleAuthError]);
 
   useEffect(() => {
     if (!email) return;
 
     let cancelled = false;
 
-    postJson<ClientIdResponse>("/talkme/client-id", { email })
+    talkmePost<ClientIdResponse>("/talkme/client-id", {}, handleAuthError)
       .then((data) => {
         if (cancelled) return;
         const syntheticClientId = typeof data.clientId === "string" ? data.clientId.trim() : "";
@@ -490,7 +492,7 @@ const Chat = () => {
     return () => {
       cancelled = true;
     };
-  }, [email]);
+  }, [email, handleAuthError]);
 
   useEffect(() => {
     if (!email) return;
@@ -620,19 +622,21 @@ const Chat = () => {
     setError(null);
 
     try {
-      const attachment = fileToSend ? await uploadChatAttachment(fileToSend) : null;
+      const attachment = fileToSend ? await uploadChatAttachment(fileToSend, handleAuthError) : null;
       if (fileToSend && !attachment?.url) {
         throw new Error("Файл загружен, но сервер не вернул ссылку");
       }
-      const data = await postJson<SendResponse>("/talkme/send", {
-        text,
-        attachmentUrl: attachment?.url || undefined,
-        attachmentName: attachment?.fileName || fileToSend?.name || undefined,
-        email,
-        name: buildTalkMeVisitorName(),
-        clientId: clientId || undefined,
-        custom: readTalkMeCustomFields(),
-      });
+      const data = await talkmePost<SendResponse>(
+        "/talkme/send",
+        {
+          text,
+          attachmentUrl: attachment?.url || undefined,
+          attachmentName: attachment?.fileName || fileToSend?.name || undefined,
+          name: buildTalkMeVisitorName(),
+          custom: readTalkMeCustomFields(),
+        },
+        handleAuthError,
+      );
 
       const nextClientId = data.clientId || clientId;
       if (data.clientId) {

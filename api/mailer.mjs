@@ -9,7 +9,7 @@
 // - Plain credentials live in .env (chmod 600). Rotate via SES console.
 // - Connection is TLS-only (implicit on 465, STARTTLS-required on 587).
 // - We never log the OTP code, the recipient email in clear text, or the
-//   SMTP password. Callers must pass an already validated 6-digit code.
+//   SMTP password. Callers must pass an already validated 5-digit code.
 // - sendOtpEmail returns { ok, ... } and never throws SMTP details to the
 //   route handler — that prevents leaking provider errors to clients.
 
@@ -90,82 +90,91 @@ function buildTransport() {
 
 function buildOtpMessage(code) {
   const safeCode = escapeHtml(code);
-  const subject = `Ваш код для входа в 220v — ${code}`;
+  const subject = `${code} — код для входа в 220v`;
   const text = [
-    "Здравствуйте!",
+    "220v · безопасный VPN",
     "",
-    `Ваш код для входа в 220v: ${code}`,
+    "Вы запросили вход в личный кабинет.",
     "",
-    "Код действителен 10 минут. Никому его не сообщайте — сотрудники 220v никогда не запрашивают код.",
-    "Если вы не запрашивали вход, просто проигнорируйте это письмо.",
+    `Ваш код подтверждения: ${code}`,
     "",
-    "— Команда 220v",
+    "Введите его на странице входа. Код действует 10 минут.",
+    "",
+    "Не сообщайте код никому — команда 220v никогда не просит его по почте или в чате.",
+    "Если вы не запрашивали вход, просто удалите это письмо.",
+    "",
+    "— 220v",
+    "support@220v.shop",
   ].join("\n");
 
-  // Палитра подобрана под главную страницу (src/index.css / src/pages/Index.tsx):
-  // - фон  hsl(40 30% 95%)  ≈ #f6f3ee  (warm cream, bg-background)
-  // - card hsl(40 40% 99%)  ≈ #fefdfa  (bg-card)
-  // - muted hsl(38 30% 92%) ≈ #f1ece4  (bg-muted — внутренняя «кремовая» панель)
-  // - text foreground  hsl(30 20% 20%) ≈ #3d3329
-  // - text muted-fg    hsl(30 15% 45%) ≈ #847362
-  // - border hsl(35 25% 85%) ≈ #e2dacf
-  // - primary hsl(36 80% 50%) ≈ #e6941a (оранжево-янтарный CTA)
   const html = `<!doctype html>
 <html lang="ru">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="color-scheme" content="light only" />
-    <meta name="supported-color-schemes" content="light" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="supported-color-schemes" content="dark" />
     <title>${escapeHtml(subject)}</title>
   </head>
-  <body style="margin:0;padding:0;background-color:#f6f3ee;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#3d3329;">
+  <body style="margin:0;padding:0;background-color:#0a0a0a;font-family:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#ffffff;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;font-size:1px;line-height:1px;mso-hide:all;">
-      Ваш код для входа в 220v — действителен 10 минут.
+      Код для входа в 220v: ${safeCode}. Действует 10 минут.
     </span>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f6f3ee;padding:32px 12px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0a0a;padding:40px 16px;">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fefdfa;border:1px solid #e2dacf;border-radius:18px;box-shadow:0 10px 30px rgba(61,51,41,0.08);overflow:hidden;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#141414;border:1px solid #262626;border-radius:28px;overflow:hidden;">
             <tr>
-              <td style="padding:32px 32px 8px 32px;text-align:center;">
-                <div style="font-size:26px;font-weight:800;letter-spacing:0.6px;color:#3d3329;text-transform:uppercase;">
-                  Leto<span style="color:#e6941a;">VPN</span>
+              <td style="padding:36px 32px 0 32px;text-align:center;">
+                <div style="font-size:28px;font-weight:800;letter-spacing:-0.5px;color:#ffffff;line-height:1.1;">
+                  220<span style="color:#c6ff3d;">v</span>
                 </div>
-                <div style="margin-top:8px;font-size:14px;color:#847362;letter-spacing:0.3px;">
-                  Открой доступ в безопасный интернет
+                <div style="margin-top:10px;font-size:14px;font-weight:500;color:#9a9a9a;line-height:1.5;">
+                  Безопасный VPN · личный кабинет
                 </div>
               </td>
             </tr>
 
             <tr>
-              <td style="padding:20px 24px 28px 24px;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1ece4;border:1px solid #e2dacf;border-radius:16px;">
+              <td style="padding:28px 24px 32px 24px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111111;border:1px solid #262626;border-radius:18px;">
                   <tr>
                     <td style="padding:28px 24px 8px 24px;text-align:center;">
-                      <div style="font-size:20px;font-weight:800;letter-spacing:0.8px;color:#3d3329;text-transform:uppercase;line-height:1.25;">
-                        Код для входа
+                      <div style="display:inline-block;padding:6px 14px;background:rgba(198,255,61,0.12);border:1px solid rgba(198,255,61,0.25);border-radius:999px;font-size:12px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:#c6ff3d;">
+                        Подтверждение входа
                       </div>
-                      <div style="margin-top:8px;font-size:14px;color:#847362;">
-                        Введите этот код на странице входа
+                      <div style="margin-top:18px;font-size:22px;font-weight:800;color:#ffffff;line-height:1.3;">
+                        Ваш одноразовый код
+                      </div>
+                      <div style="margin-top:8px;font-size:14px;color:#9a9a9a;line-height:1.6;">
+                        Скопируйте код и вставьте его на странице входа
                       </div>
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:18px 24px 22px 24px;text-align:center;">
-                      <div style="display:inline-block;padding:18px 30px;background:#ffffff;border:1px solid #e2dacf;border-radius:12px;box-shadow:0 4px 12px rgba(61,51,41,0.06);font-size:34px;font-weight:800;letter-spacing:10px;color:#3d3329;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;">
+                    <td style="padding:20px 24px 8px 24px;text-align:center;">
+                      <div style="display:inline-block;padding:20px 28px;background:#0a0a0a;border:1px solid #262626;border-radius:16px;box-shadow:0 0 0 1px rgba(198,255,61,0.08),0 18px 40px rgba(0,0,0,0.35);font-size:40px;font-weight:800;letter-spacing:12px;color:#c6ff3d;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;">
                         ${safeCode}
                       </div>
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:0 28px 6px 28px;color:#3d3329;font-size:14px;line-height:1.6;text-align:center;">
-                      Код действителен <strong style="color:#b8730f;">10 минут</strong>. Никому его не сообщайте — сотрудники 220v никогда не запрашивают код.
+                    <td style="padding:16px 28px 28px 28px;text-align:center;">
+                      <div style="font-size:14px;color:#c7c7c7;line-height:1.7;">
+                        Код действует <strong style="color:#ffffff;">10&nbsp;минут</strong> и подходит только для одного входа.
+                      </div>
                     </td>
                   </tr>
+                </table>
+
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;">
                   <tr>
-                    <td style="padding:10px 28px 26px 28px;color:#847362;font-size:13px;line-height:1.6;text-align:center;">
-                      Если вы не запрашивали вход, просто проигнорируйте это письмо.
+                    <td style="padding:18px 20px;background:#1a1a1a;border:1px solid #262626;border-radius:14px;">
+                      <div style="font-size:13px;color:#9a9a9a;line-height:1.7;text-align:center;">
+                        <strong style="color:#ffffff;">Не передавайте код третьим лицам.</strong><br />
+                        Сотрудники 220v никогда не запрашивают его в письмах, чатах или звонках.<br />
+                        Не запрашивали вход? Просто проигнорируйте это письмо.
+                      </div>
                     </td>
                   </tr>
                 </table>
@@ -173,8 +182,10 @@ function buildOtpMessage(code) {
             </tr>
 
             <tr>
-              <td style="padding:14px 32px 24px 32px;border-top:1px solid #e2dacf;background:#fefdfa;color:#847362;font-size:12px;text-align:center;line-height:1.6;">
-                © 220v · <a href="mailto:support@220v.shop" style="color:#e6941a;text-decoration:none;">support@220v.shop</a>
+              <td style="padding:0 32px 28px 32px;border-top:1px solid #262626;text-align:center;">
+                <div style="padding-top:22px;font-size:12px;color:#9a9a9a;line-height:1.7;">
+                  © 220v · <a href="mailto:support@220v.shop" style="color:#c6ff3d;text-decoration:none;font-weight:600;">support@220v.shop</a>
+                </div>
               </td>
             </tr>
           </table>
@@ -191,7 +202,7 @@ export async function sendOtpEmail({ email, code }) {
   if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { ok: false, error: "invalid_recipient" };
   }
-  if (typeof code !== "string" || !/^\d{4,8}$/.test(code)) {
+  if (typeof code !== "string" || !/^\d{5}$/.test(code)) {
     return { ok: false, error: "invalid_code" };
   }
 

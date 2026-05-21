@@ -3,6 +3,14 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 
+@font-face {
+  font-family: "Wise Sans";
+  font-style: normal;
+  font-weight: 700 900;
+  font-display: swap;
+  src: url("/fonts/WiseSans-Heavy.woff2") format("woff2");
+}
+
 .landing-root {
   --bg: #0a0a0a;
   --bg-2: #111111;
@@ -1896,6 +1904,14 @@ body.landing-no-scroll { overflow: hidden; }
   font-size: 20px;
   font-weight: 700;
   padding: 0;
+}
+.landing-root .login-card .otp-slot {
+  font-family: "Wise Sans", "Manrope", sans-serif;
+  font-size: 2.5rem;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #163300;
 }
 .landing-root .login-card .form-actions {
   display: flex;

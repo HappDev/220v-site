@@ -40,7 +40,7 @@ async function apiFetch<T>(
 ): Promise<ApiResult<T>> {
   const method = (init.method || "GET").toUpperCase();
   const headers = new Headers(init.headers);
-  if (!headers.has("Content-Type") && init.body) {
+  if (!headers.has("Content-Type") && init.body && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (method !== "GET" && method !== "HEAD") {
@@ -71,4 +71,11 @@ export function apiPost<T>(path: string, body?: Record<string, unknown>) {
 
 export function apiDelete<T>(path: string) {
   return apiFetch<T>(path, { method: "DELETE" });
+}
+
+export function apiUploadForm<T>(path: string, formData: FormData) {
+  return apiFetch<T>(path, {
+    method: "POST",
+    body: formData,
+  });
 }

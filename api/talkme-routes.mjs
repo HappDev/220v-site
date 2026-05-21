@@ -4,6 +4,13 @@ import { fileURLToPath } from "node:url";
 import { dirname, extname, resolve } from "node:path";
 import express from "express";
 import multer from "multer";
+import { clientError } from "./http/errors.mjs";
+import {
+  chatUploadLimiter,
+  talkmeIpLimiter,
+  talkmeSessionLimiter,
+} from "./http/rateLimit.mjs";
+import { requireSession } from "./auth/session.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -15,7 +22,7 @@ const SUPPORT_CHAT_MAX_FILE_SIZE =
   Number.isFinite(SUPPORT_CHAT_MAX_FILE_SIZE_MB) && SUPPORT_CHAT_MAX_FILE_SIZE_MB > 0
     ? SUPPORT_CHAT_MAX_FILE_SIZE_MB * 1024 * 1024
     : 50 * 1024 * 1024;
-const CHAT_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"]);
+const CHAT_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]);
 const CHAT_VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".webm", ".m4v", ".avi", ".mkv"]);
 const CHAT_ZIP_EXTENSIONS = new Set([".zip"]);
 const CHAT_ALLOWED_EXTENSIONS = new Set([
@@ -53,8 +60,10 @@ function getChatAttachmentKind({ ext, mimeType }) {
 
 function isAllowedChatFile(file) {
   const ext = getChatFileExtension(file);
+  if (ext === ".svg") return false;
   if (!CHAT_ALLOWED_EXTENSIONS.has(ext)) return false;
   const mimeType = String(file?.mimetype || "").toLowerCase();
+  if (mimeType === "image/svg+xml") return false;
   if (!mimeType) return true;
   if (CHAT_ALLOWED_MIME_PREFIXES.some((prefix) => mimeType.startsWith(prefix))) return true;
   if (CHAT_ZIP_EXTENSIONS.has(ext) && CHAT_ALLOWED_MIME_TYPES.has(mimeType)) return true;
@@ -89,7 +98,18 @@ const supportChatUpload = multer({
 });
 
 export function registerTalkMeRoutes(app) {
-  app.use("/api/support/chat-attachment", express.static(SUPPORT_CHAT_UPLOADS_DIR));
+  app.use(
+    "/api/support/chat-attachment",
+    (_req, res, next) => {
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Security-Policy", "default-src 'none'");
+      next();
+    },
+    express.static(SUPPORT_CHAT_UPLOADS_DIR),
+  );
+
+  const talkmeProtected = [talkmeIpLimiter, talkmeSessionLimiter, ...requireSession];
+  const uploadProtected = [chatUploadLimiter, talkmeIpLimiter, ...requireSession];
 
 // ── Talk-Me REST API proxy (for /chat) ──
 
@@ -111,6 +131,83 @@ const TALKME_API_BASE = "https://lcab.talk-me.ru/json/v1.0";
 function syntheticClientIdFromEmail(email) {
   const normalized = `220v:${String(email || "").trim().toLowerCase()}`;
   return createHash("sha256").update(normalized).digest("hex").slice(0, 32);
+}
+
+function getTalkMeIdentity(req) {
+  const email = req.session.email;
+  return {
+    email,
+    clientId: syntheticClientIdFromEmail(email),
+  };
+}
+
+async function findTalkMeClientsForEmail(email) {
+  const result = await talkmeRequest("/chat/client/search", {
+    email: String(email || "").trim().toLowerCase(),
+  });
+  return (result?.clients || []).map((c) => ({
+    clientId: c.clientId || "",
+    searchId: c.searchId ?? null,
+    name: c.name || "",
+    email: c.email || "",
+  }));
+}
+
+async function assertClientLookup(req, res, body) {
+  const { clientId: expectedClientId } = getTalkMeIdentity(req);
+  const hasSearchId =
+    typeof body?.searchId === "number" && Number.isFinite(body.searchId) && body.searchId > 0;
+  const rawClientId = typeof body?.clientId === "string" ? body.clientId.trim() : "";
+  const hasClientId = rawClientId.length > 0;
+
+  if (!hasSearchId && !hasClientId) {
+    clientError(res, 400, "searchId or clientId is required");
+    return null;
+  }
+
+  if (hasClientId && rawClientId !== expectedClientId) {
+    clientError(res, 403, "Invalid clientId");
+    return null;
+  }
+
+  if (hasSearchId) {
+    const clients = await findTalkMeClientsForEmail(req.session.email);
+    if (!clients.some((c) => c.searchId === body.searchId)) {
+      clientError(res, 403, "Invalid searchId");
+      return null;
+    }
+  }
+
+  return {
+    client: hasSearchId ? { searchId: body.searchId } : { id: expectedClientId },
+  };
+}
+
+function assertSessionClientId(req, res, clientId) {
+  const trimmed = typeof clientId === "string" ? clientId.trim() : "";
+  if (!trimmed) {
+    clientError(res, 400, "clientId is required");
+    return null;
+  }
+  if (trimmed !== getTalkMeIdentity(req).clientId) {
+    clientError(res, 403, "Invalid clientId");
+    return null;
+  }
+  return trimmed;
+}
+
+function isAllowedAttachmentUrl(url, req) {
+  try {
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) return false;
+    if (!parsed.pathname.includes("/support/chat-attachment/")) return false;
+    const host = String(req.headers["x-forwarded-host"] || req.get("host") || "")
+      .split(",")[0]
+      .trim();
+    return !host || parsed.host === host;
+  } catch {
+    return false;
+  }
 }
 
 function talkmeToken() {
@@ -288,51 +385,29 @@ function countOnlineOperatorsFromGetListResult(result) {
   return collect.length;
 }
 
-  app.post("/api/talkme/client-search", async (req, res) => {
+  app.post("/api/talkme/client-search", ...talkmeProtected, async (req, res) => {
   try {
-    const { email } = req.body;
-    if (!email || typeof email !== "string" || !email.trim()) {
-      return res.status(400).json({ error: "email is required" });
-    }
-
-    const result = await talkmeRequest("/chat/client/search", {
-      email: email.trim().toLowerCase(),
-    });
-
-    const clients = (result?.clients || []).map((c) => ({
-      clientId: c.clientId || "",
-      searchId: c.searchId ?? null,
-      name: c.name || "",
-      email: c.email || "",
-    }));
-
+    const { email } = getTalkMeIdentity(req);
+    const clients = await findTalkMeClientsForEmail(email);
     return res.json({ clients });
   } catch (err) {
     return res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
-  app.post("/api/talkme/client-id", (req, res) => {
-  const { email } = req.body || {};
-  const trimmedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
-  if (!trimmedEmail) {
-    return res.status(400).json({ error: "email is required" });
-  }
-
-  return res.json({ clientId: syntheticClientIdFromEmail(trimmedEmail) });
+  app.post("/api/talkme/client-id", ...talkmeProtected, (req, res) => {
+  const { clientId } = getTalkMeIdentity(req);
+  return res.json({ clientId });
 });
 
-  app.post("/api/talkme/messages", async (req, res) => {
+  app.post("/api/talkme/messages", ...talkmeProtected, async (req, res) => {
   try {
-    const { clientId, searchId, afterId, limit: rawLimit } = req.body;
-    const hasSearchId = typeof searchId === "number" && Number.isFinite(searchId) && searchId > 0;
-    const hasClientId = typeof clientId === "string" && clientId.trim().length > 0;
-    if (!hasSearchId && !hasClientId) {
-      return res.status(400).json({ error: "searchId or clientId is required" });
-    }
+    const lookup = await assertClientLookup(req, res, req.body);
+    if (!lookup) return;
 
+    const { afterId, limit: rawLimit } = req.body;
     const body = {
-      client: hasSearchId ? { searchId } : { id: clientId.trim() },
+      client: lookup.client,
       orderDirection: "asc",
       limit: Math.min(Math.max(Number(rawLimit) || 100, 1), 500),
     };
@@ -361,7 +436,7 @@ function countOnlineOperatorsFromGetListResult(result) {
   }
 });
 
-  app.post("/api/support/chat-attachment", (req, res) => {
+  app.post("/api/support/chat-attachment", ...uploadProtected, (req, res) => {
   supportChatUpload.single("file")(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === "LIMIT_FILE_SIZE") {
@@ -465,28 +540,12 @@ async function setTalkmeClientInfo({ clientId, name, email, customData }) {
   }
 }
 
-  app.post("/api/talkme/send", async (req, res) => {
+  app.post("/api/talkme/send", ...talkmeProtected, async (req, res) => {
   try {
-    const { text, attachmentUrl, attachmentName, email, name, custom } = req.body;
-    const rawClientId = req.body?.clientId;
-    const trimmedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+    const { text, attachmentUrl, attachmentName, name, custom } = req.body;
+    const { email: trimmedEmail, clientId } = getTalkMeIdentity(req);
     const trimmedName = typeof name === "string" ? name.trim() : "";
     const sanitizedCustom = sanitizeTalkmeCustom(custom);
-
-    let clientId =
-      typeof rawClientId === "string" && rawClientId.trim().length > 0
-        ? rawClientId.trim()
-        : "";
-
-    // Fallback: если clientId не передан, но есть email — синтезируем
-    // детерминированный 32-hex id от email. Talk-Me создаст клиента на лету,
-    // и последующие `client-search` по email вернут этот же id.
-    if (!clientId) {
-      if (!trimmedEmail) {
-        return res.status(400).json({ error: "clientId or email is required" });
-      }
-      clientId = syntheticClientIdFromEmail(trimmedEmail);
-    }
 
     const trimmedText = typeof text === "string" ? text.trim() : "";
     const trimmedAttachmentUrl =
@@ -498,16 +557,8 @@ async function setTalkmeClientInfo({ clientId, name, email, customData }) {
       return res.status(400).json({ error: "text or attachmentUrl is required" });
     }
 
-    if (trimmedAttachmentUrl) {
-      let parsed;
-      try {
-        parsed = new URL(trimmedAttachmentUrl);
-      } catch {
-        return res.status(400).json({ error: "attachmentUrl must be a valid URL" });
-      }
-      if (!["http:", "https:"].includes(parsed.protocol)) {
-        return res.status(400).json({ error: "attachmentUrl must use http or https" });
-      }
+    if (trimmedAttachmentUrl && !isAllowedAttachmentUrl(trimmedAttachmentUrl, req)) {
+      return res.status(400).json({ error: "attachmentUrl must point to an uploaded support file" });
     }
 
     const messageParts = [];
@@ -517,11 +568,6 @@ async function setTalkmeClientInfo({ clientId, name, email, customData }) {
       messageParts.push(trimmedAttachmentUrl);
     }
 
-    // Сначала обновляем карточку клиента отдельным запросом chat/client/setInfo —
-    // это правильный REST-эндпоинт для записи custom-полей (sendToOperator
-    // их не сохраняет, см. Swift SDK Talk-Me). Делаем это ДО отправки сообщения,
-    // чтобы оператор сразу видел актуальные RMW-данные при появлении нового
-    // сообщения. setInfo сам ловит ошибки и не валит запрос.
     await setTalkmeClientInfo({
       clientId,
       name: trimmedName,
@@ -529,15 +575,7 @@ async function setTalkmeClientInfo({ clientId, name, email, customData }) {
       customData: sanitizedCustom,
     });
 
-    // Talk-Me REST принимает произвольный 32-символьный clientId (в т.ч. синтетический
-    // от email). При первом POST с таким id Talk-Me создаёт запись клиента
-    // и сохраняет email/name из payload; при повторных — обновляет их.
-    // ВАЖНО: custom-поля шлём ТОЛЬКО через `chat/client/setInfo` (см. вызов
-    // setTalkmeClientInfo выше). В `sendToOperator` их добавлять нельзя —
-    // у части бэкендов Talk-Me наблюдается дроп соединения при «лишних»
-    // полях в этом эндпоинте (`fetch failed`).
-    const client = { id: clientId };
-    if (trimmedEmail) client.email = trimmedEmail;
+    const client = { id: clientId, email: trimmedEmail };
     if (trimmedName) client.name = trimmedName;
 
     const sendPayload = {
@@ -545,10 +583,6 @@ async function setTalkmeClientInfo({ clientId, name, email, customData }) {
       message: { text: messageParts.join("\n") },
     };
 
-    // Диагностика: печатаем то, что уходит в Talk-Me, и то, что вернул Talk-Me.
-    // Если в кабинете оператора поля не появились — проблема, скорее всего,
-    // в системных именах доп. полей (их нужно завести в админке Talk-Me с такими
-    // же ключами: Traffic, Expiration_date, Devices, Tariff).
     console.info(
       "[talkme/send] → sendToOperator payload:",
       JSON.stringify(sendPayload),
@@ -576,7 +610,7 @@ async function setTalkmeClientInfo({ clientId, name, email, customData }) {
   }
 });
 
-  app.post("/api/talkme/message-status", async (req, res) => {
+  app.post("/api/talkme/message-status", ...talkmeProtected, async (req, res) => {
   try {
     const { messageId, status, operatorLogin } = req.body || {};
     const mid = Number(messageId);
@@ -613,19 +647,12 @@ async function setTalkmeClientInfo({ clientId, name, email, customData }) {
   }
 });
 
-  app.post("/api/talkme/dialog-status", async (req, res) => {
+  app.post("/api/talkme/dialog-status", ...talkmeProtected, async (req, res) => {
   try {
-    const { clientId, searchId } = req.body;
-    const hasSearchId =
-      typeof searchId === "number" && Number.isFinite(searchId) && searchId > 0;
-    const hasClientId = typeof clientId === "string" && clientId.trim().length > 0;
-    if (!hasSearchId && !hasClientId) {
-      return res.status(400).json({ error: "searchId or clientId is required" });
-    }
+    const lookup = await assertClientLookup(req, res, req.body);
+    if (!lookup) return;
 
-    const body = {
-      client: hasSearchId ? { searchId } : { id: clientId.trim() },
-    };
+    const body = { client: lookup.client };
 
     const result = await talkmeRequest("/chat/message/getDialogStatusList", body);
     const statusLabel = deriveDialogStatusLabel(result);
@@ -692,24 +719,26 @@ function getOperatorTyping(clientId) {
  * `operatorTypingState` — его читает наш `Chat.tsx`, чтобы показать
  * пользователю анимированный индикатор «Оператор печатает…».
  */
-  app.post("/api/talkme/send-typing", async (req, res) => {
+  app.post("/api/talkme/send-typing", ...talkmeProtected, async (req, res) => {
   try {
     const { clientId, searchId, operatorLogin, virtual, ttl } = req.body || {};
 
-    const hasSearchId =
-      typeof searchId === "number" && Number.isFinite(searchId) && searchId > 0;
-    const hasClientId = typeof clientId === "string" && clientId.trim().length > 0;
-    if (!hasSearchId && !hasClientId) {
-      return res.status(400).json({ error: "searchId or clientId is required" });
-    }
+    const lookup = await assertClientLookup(req, res, { clientId, searchId });
+    if (!lookup) return;
 
     const login = typeof operatorLogin === "string" ? operatorLogin.trim() : "";
     if (!login) {
       return res.status(400).json({ error: "operatorLogin is required" });
     }
 
-    const trimmedClientId = hasClientId ? clientId.trim() : null;
-    const client = hasSearchId ? { searchId } : { clientId: trimmedClientId };
+    const trimmedClientId =
+      typeof clientId === "string" && clientId.trim().length > 0
+        ? clientId.trim()
+        : getTalkMeIdentity(req).clientId;
+    const client =
+      typeof searchId === "number" && Number.isFinite(searchId) && searchId > 0
+        ? { searchId }
+        : { clientId: trimmedClientId };
     const operator = { login, virtual: virtual === false ? false : true };
 
     const body = { client, operator };
@@ -730,8 +759,6 @@ function getOperatorTyping(clientId) {
     try {
       await talkmeRequest("/chat/message/sendTypingToClient", body);
     } catch (err) {
-      // Talk-Me часто отвечает «Ничего не изменилось», если такая же
-      // имитация уже активна — это не ошибка, а no-op (типинг продолжается).
       const descr = (err?.talkmeErrorDescr || err?.message || "").toLowerCase();
       if (descr.includes("ничего не изменилось")) {
         noop = true;
@@ -740,11 +767,7 @@ function getOperatorTyping(clientId) {
       }
     }
 
-    // Регистрируем typing-состояние и для случая успеха, и для no-op:
-    // в обоих случаях оператор «печатает» для клиента ещё ttl секунд.
-    if (trimmedClientId) {
-      setOperatorTyping(trimmedClientId, ttlSeconds, login);
-    }
+    setOperatorTyping(trimmedClientId, ttlSeconds, login);
 
     return res.json({ success: true, ...(noop ? { noop: true } : {}) });
   } catch (err) {
@@ -760,12 +783,11 @@ function getOperatorTyping(clientId) {
  * Тело запроса: `{ clientId: string }`.
  * Ответ: `{ typing: bool, operatorLogin: string | null, secondsLeft: number }`.
  */
-  app.post("/api/talkme/operator-typing-status", (req, res) => {
-  const { clientId } = req.body || {};
-  if (typeof clientId !== "string" || !clientId.trim()) {
-    return res.status(400).json({ error: "clientId is required" });
-  }
-  const state = getOperatorTyping(clientId.trim());
+  app.post("/api/talkme/operator-typing-status", ...talkmeProtected, (req, res) => {
+  const trimmedClientId = assertSessionClientId(req, res, req.body?.clientId);
+  if (!trimmedClientId) return;
+
+  const state = getOperatorTyping(trimmedClientId);
   if (!state) {
     return res.json({ typing: false, operatorLogin: null, secondsLeft: 0 });
   }
@@ -777,7 +799,7 @@ function getOperatorTyping(clientId) {
 });
 
 /** Прокси к Talk-Me `POST /chat/operator/getList` — список операторов и признак онлайн. */
-  app.post("/api/talkme/operator-list", async (req, res) => {
+  app.post("/api/talkme/operator-list", ...talkmeProtected, async (req, res) => {
   try {
     const body =
       req.body && typeof req.body === "object" && !Array.isArray(req.body)

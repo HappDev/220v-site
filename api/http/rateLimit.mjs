@@ -61,3 +61,26 @@ export const checkoutSessionLimiter = makeRateLimit({
   keyGenerator: (req) => req.cookies?.[SESSION_COOKIE] || req.ip,
   message: { error: "Too many checkout requests" },
 });
+
+export const talkmeIpLimiter = makeRateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  prefix: "v220:rl:talkme:ip:",
+  message: { error: "Too many chat requests" },
+});
+
+export const talkmeSessionLimiter = makeRateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  prefix: "v220:rl:talkme:sid:",
+  keyGenerator: (req) => req.cookies?.[SESSION_COOKIE] || req.ip,
+  message: { error: "Too many chat requests" },
+});
+
+export const chatUploadLimiter = makeRateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  prefix: "v220:rl:chatupload:sid:",
+  keyGenerator: (req) => req.cookies?.[SESSION_COOKIE] || req.ip,
+  message: { error: "Too many upload requests" },
+});
