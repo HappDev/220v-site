@@ -450,7 +450,7 @@ const Index = () => {
                 onClick={handleStart}
                 disabled={loading}
               >
-                {loading ? "Отправка..." : normalizedEmail === INSTANT_LOGIN_EMAIL ? "Войти" : "Отправить код"}
+                {loading ? "Отправка..." : "Отправить код"}
               </button>
             </div>
           </div>
