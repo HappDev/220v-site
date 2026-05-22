@@ -139,6 +139,7 @@ const Index = () => {
       }
 
       if (data?.ok) {
+        setCode("");
         setLoginStep("verify");
         setResendCooldownSec(retryAfterSec ?? data.retryAfterSec ?? 60);
         toast({
