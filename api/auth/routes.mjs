@@ -71,11 +71,11 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
         const localPart = email.slice(0, atIdx);
         const domain = email.slice(atIdx + 1);
 
-        if (localPart.includes(".") || localPart.includes("+")) {
+        if (localPart.includes("+")) {
           return clientError(
             res,
             400,
-            "Email не должен содержать точки или плюс в имени",
+            "Email не должен содержать плюс в имени",
           );
         }
 
