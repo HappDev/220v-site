@@ -14,6 +14,8 @@
 //   route handler — that prevents leaking provider errors to clients.
 
 import nodemailer from "nodemailer";
+import { emailHash, maskEmail } from "./auth/crypto.mjs";
+import { logger } from "./logger.mjs";
 
 const HTML_ESCAPES = {
   "&": "&amp;",
@@ -63,12 +65,39 @@ function readSenderConfig() {
   return { name, email };
 }
 
+function maskSmtpUser(user) {
+  if (!user || typeof user !== "string") return "";
+  if (user.length <= 4) return "***";
+  return `${user.slice(0, 4)}***`;
+}
+
+function formatSmtpError(err) {
+  if (!err || typeof err !== "object") {
+    return { message: String(err || "unknown smtp error") };
+  }
+  return {
+    code: err.code || null,
+    responseCode: err.responseCode || null,
+    command: err.command || null,
+    response: typeof err.response === "string" ? err.response.slice(0, 500) : null,
+    message: typeof err.message === "string" ? err.message.slice(0, 500) : null,
+  };
+}
+
 function buildTransport() {
   const cfg = readSmtpConfig();
   const key = `${cfg.host}|${cfg.port}|${cfg.user}`;
   if (cachedTransport && cachedTransportKey === key) {
     return cachedTransport;
   }
+  logger.info(
+    {
+      smtpHost: cfg.host,
+      smtpPort: cfg.port,
+      smtpUser: maskSmtpUser(cfg.user),
+    },
+    "mailer transport created",
+  );
   const secure = cfg.port === 465;
   cachedTransport = nodemailer.createTransport({
     host: cfg.host,
@@ -199,10 +228,15 @@ function buildOtpMessage(code) {
 }
 
 export async function sendOtpEmail({ email, code }) {
+  const recipientDomain =
+    typeof email === "string" && email.includes("@") ? email.slice(email.indexOf("@") + 1) : null;
+
   if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    logger.warn({ recipientDomain }, "mailer rejected invalid recipient");
     return { ok: false, error: "invalid_recipient" };
   }
   if (typeof code !== "string" || !/^\d{5}$/.test(code)) {
+    logger.warn({ emailHash: emailHash(email) }, "mailer rejected invalid otp code format");
     return { ok: false, error: "invalid_code" };
   }
 
@@ -212,6 +246,10 @@ export async function sendOtpEmail({ email, code }) {
     from = readSenderConfig();
     transport = buildTransport();
   } catch (err) {
+    logger.error(
+      { err: formatSmtpError(err), emailHash: emailHash(email), maskedEmail: maskEmail(email) },
+      "mailer not configured",
+    );
     return {
       ok: false,
       error: "mailer_not_configured",
@@ -220,6 +258,17 @@ export async function sendOtpEmail({ email, code }) {
   }
 
   const { subject, text, html } = buildOtpMessage(code);
+
+  logger.info(
+    {
+      emailHash: emailHash(email),
+      maskedEmail: maskEmail(email),
+      recipientDomain,
+      fromEmail: from.email,
+      fromName: from.name,
+    },
+    "mailer sending otp email",
+  );
 
   try {
     const info = await transport.sendMail({
@@ -233,21 +282,60 @@ export async function sendOtpEmail({ email, code }) {
         "Auto-Submitted": "auto-generated",
       },
     });
+    logger.info(
+      { emailHash: emailHash(email), messageId: info?.messageId || null },
+      "mailer otp email sent",
+    );
     return { ok: true, messageId: info?.messageId || null };
   } catch (err) {
-    const errCode =
-      (err && (err.responseCode || err.code)) || null;
+    const smtpErr = formatSmtpError(err);
+    logger.error(
+      {
+        emailHash: emailHash(email),
+        maskedEmail: maskEmail(email),
+        recipientDomain,
+        fromEmail: from.email,
+        smtp: smtpErr,
+      },
+      "mailer smtp send failed",
+    );
+    const errCode = smtpErr.responseCode || smtpErr.code || null;
     return {
       ok: false,
       error: "smtp_error",
-      detail: errCode ? String(errCode) : err?.message || "smtp failure",
+      detail: errCode ? String(errCode) : smtpErr.message || "smtp failure",
+    };
+  }
+}
+
+export function getMailerConfigSummary() {
+  try {
+    const smtp = readSmtpConfig();
+    const from = readSenderConfig();
+    return {
+      ok: true,
+      smtpHost: smtp.host,
+      smtpPort: smtp.port,
+      smtpUser: maskSmtpUser(smtp.user),
+      fromEmail: from.email,
+      fromName: from.name,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err?.message || "mailer not configured",
     };
   }
 }
 
 export async function verifyMailerConfig() {
+  const summary = getMailerConfigSummary();
+  if (!summary.ok) {
+    throw new Error(summary.error);
+  }
   const transport = buildTransport();
-  return transport.verify();
+  await transport.verify();
+  return summary;
 }
 
 export function _resetMailerForTests() {

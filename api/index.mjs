@@ -13,7 +13,7 @@ import { checkoutSessionLimiter } from "./http/rateLimit.mjs";
 import { base64url } from "./auth/crypto.mjs";
 import { createAuthRouter } from "./auth/routes.mjs";
 import { requireSession } from "./auth/session.mjs";
-import { sendOtpEmail } from "./mailer.mjs";
+import { getMailerConfigSummary, sendOtpEmail, verifyMailerConfig } from "./mailer.mjs";
 import { registerTalkMeRoutes } from "./talkme-routes.mjs";
 
 const app = express();
@@ -820,13 +820,29 @@ export { app };
 
 const port = Number(process.env.PORT) || 3001;
 
+async function logMailerStartupStatus() {
+  const summary = getMailerConfigSummary();
+  if (!summary.ok) {
+    logger.error({ mailer: summary }, "mailer config invalid at startup");
+    return;
+  }
+  logger.info({ mailer: summary }, "mailer config loaded");
+  try {
+    await verifyMailerConfig();
+    logger.info({ mailer: summary }, "mailer smtp connection verified");
+  } catch (err) {
+    logger.error({ err, mailer: summary }, "mailer smtp verify failed at startup");
+  }
+}
+
 if (process.env.NODE_ENV !== "test") {
   redis
     .connect()
     .catch((err) => {
       logger.error({ err }, "redis connect failed");
     })
-    .finally(() => {
+    .finally(async () => {
+      await logMailerStartupStatus();
       app.listen(port, "0.0.0.0", () => {
         logger.info({ port }, "API listening");
       });

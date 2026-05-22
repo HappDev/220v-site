@@ -14,6 +14,7 @@ import {
   emailHash,
   generateOtpCode,
   hashCode,
+  maskEmail,
 } from "./crypto.mjs";
 import {
   buildRedisAuthSnapshot,
@@ -118,6 +119,8 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
           req.log.warn(
             {
               emailHash: emailHash(email),
+              maskedEmail: maskEmail(email),
+              recipientDomain: domain,
               mailerError: mailResult.error,
               mailerDetail: mailResult.detail,
             },
