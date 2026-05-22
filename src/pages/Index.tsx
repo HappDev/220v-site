@@ -29,14 +29,6 @@ const ALLOWED_DASHBOARD_DEEP_KEYS = new Set([
 const OTP_SLOT_CLASS =
   "otp-slot h-[3.6rem] w-[3.6rem] rounded-md border border-input font-bold bg-white first:rounded-md last:rounded-md";
 
-function waitForBrowserRetint(): Promise<void> {
-  return new Promise((resolve) => {
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => window.setTimeout(resolve, 100));
-    });
-  });
-}
-
 function hrefAfterLoginFromPendingSearch(): string {
   // 1) Универсальный pending redirect (сохраняется RequireVpnAuth при попытке
   //    открыть защищённую страницу без авторизации).
@@ -79,7 +71,7 @@ const Index = () => {
   const [loading, setLoading] = useState(false);
   const [resendCooldownSec, setResendCooldownSec] = useState(0);
   const [sessionReady, setSessionReady] = useState(false);
-  const { toast, clear } = useToast();
+  const { toast } = useToast();
   const navigate = useNavigate();
   const { refresh: refreshSession } = useSession();
 
@@ -152,7 +144,7 @@ const Index = () => {
         toast({
           title: "✅ Код отправлен!",
           description: `Код подтверждения отправлен на ${normalizedEmail}`,
-          className: "bg-green-500 text-white border-green-600",
+          className: "bg-[#0a0a0a] text-white border-l-4 border-y border-r border-green-500",
         });
       } else {
         toast({ title: "Ошибка", description: data?.error || "Не удалось отправить код", variant: "destructive" });
@@ -186,9 +178,7 @@ const Index = () => {
       if (data?.user) {
         persistChatCompatCache({ email: normalizedEmail });
         await refreshSession();
-        clear();
-        await waitForBrowserRetint();
-        window.location.assign(hrefAfterLoginFromPendingSearch());
+        navigate(hrefAfterLoginFromPendingSearch());
       } else {
         toast({ title: "Ошибка", description: data?.error || "Неверный код", variant: "destructive" });
       }
