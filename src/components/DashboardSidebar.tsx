@@ -54,9 +54,14 @@ export const DashboardSidebar = ({ items, onLogout, email }: DashboardSidebarPro
     if (!open) return;
     const { body } = document;
     const prev = body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
     body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
       body.style.overflow = prev;
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open]);
 
@@ -91,7 +96,14 @@ export const DashboardSidebar = ({ items, onLogout, email }: DashboardSidebarPro
       >
         <div className="dashboard-sidebar__head">
           <Link to="/" className="dashboard-sidebar__logo" aria-label="220v">
-            <img src={logo220v} alt="220v" className="dashboard-sidebar__logo-img" />
+            <img
+              src={logo220v}
+              alt="220v"
+              className="dashboard-sidebar__logo-img"
+              width={1254}
+              height={1254}
+              decoding="async"
+            />
           </Link>
           <button
             type="button"

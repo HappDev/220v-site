@@ -97,6 +97,7 @@ const Index = () => {
 
   const closeLogin = () => {
     if (loading) return;
+    setCode("");
     setLoginOpen(false);
   };
 
@@ -124,8 +125,8 @@ const Index = () => {
       } else {
         toast({ title: "Ошибка", description: data?.error || "Не удалось отправить код", variant: "destructive" });
       }
-    } catch (err: any) {
-      toast({ title: "Ошибка", description: err.message || "Ошибка отправки", variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Ошибка", description: err instanceof Error ? err.message : "Ошибка отправки", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -152,8 +153,8 @@ const Index = () => {
       } else {
         toast({ title: "Ошибка", description: data?.error || "Неверный код", variant: "destructive" });
       }
-    } catch (err: any) {
-      toast({ title: "Ошибка", description: err.message || "Ошибка проверки кода", variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Ошибка", description: err instanceof Error ? err.message : "Ошибка проверки кода", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -161,7 +162,7 @@ const Index = () => {
 
   if (!sessionReady) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex min-h-[100svh] min-h-[100dvh] items-center justify-center bg-background">
         <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" aria-label="Загрузка" />
       </div>
     );
@@ -222,7 +223,15 @@ const Index = () => {
 
             <div className="hero__visual">
               <div className="hero__mascot-glow" aria-hidden="true" />
-              <img src={mascot220v} alt="Маскот 220v" className="hero__mascot" />
+              <img
+                src={mascot220v}
+                alt="Маскот 220v"
+                className="hero__mascot"
+                width={1024}
+                height={1536}
+                decoding="async"
+                fetchPriority="high"
+              />
             </div>
           </div>
 
@@ -435,9 +444,15 @@ const Index = () => {
               <label htmlFor="login-email">Email</label>
               <input
                 id="login-email"
+                name="email"
                 type="email"
+                inputMode="email"
                 placeholder="you@example.com"
                 autoComplete="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="send"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyDown={(e) => {
@@ -460,7 +475,14 @@ const Index = () => {
         ) : (
           <div className="login-card" style={{ background: "transparent", border: 0, padding: 0, boxShadow: "none" }}>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-              <InputOTP maxLength={5} value={code} onChange={setCode}>
+              <InputOTP
+                maxLength={5}
+                value={code}
+                onChange={setCode}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]*"
+              >
                 <InputOTPGroup className="gap-3">
                   {[0, 1, 2, 3, 4].map((index) => (
                     <InputOTPSlot key={index} index={index} className={OTP_SLOT_CLASS} />
@@ -479,7 +501,14 @@ const Index = () => {
               </button>
             </div>
             <p className="form-link">
-              <button type="button" onClick={() => setLoginStep("email")} disabled={loading}>
+              <button
+                type="button"
+                onClick={() => {
+                  setCode("");
+                  setLoginStep("email");
+                }}
+                disabled={loading}
+              >
                 ← Изменить email
               </button>
             </p>

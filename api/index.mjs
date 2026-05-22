@@ -5,10 +5,12 @@ import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import { z } from "zod";
 
-import { isProd, FETCH_TIMEOUT_MS, UUID_RE, HWID_RE } from "./config.mjs";
+import { isProd, UUID_RE, HWID_RE } from "./config.mjs";
 import { logger } from "./logger.mjs";
 import { redis } from "./redis.mjs";
 import { clientError, serverError } from "./http/errors.mjs";
+import { fetchWithTimeout } from "./http/fetchWithTimeout.mjs";
+import { isTimeoutError, publicMessageFromErr, timeoutStatusCode } from "./http/userMessages.mjs";
 import { checkoutSessionLimiter } from "./http/rateLimit.mjs";
 import { base64url } from "./auth/crypto.mjs";
 import { createAuthRouter } from "./auth/routes.mjs";
@@ -26,13 +28,6 @@ app.use(
 );
 app.use(express.json({ limit: "16kb" }));
 app.use(cookieParser());
-
-async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
-  return fetch(url, {
-    ...options,
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-}
 
 function getBillingAllowedHosts() {
   const raw = process.env.BILLING_ALLOWED_HOSTS?.trim();
@@ -593,8 +588,12 @@ app.get("/api/me", requireSession, async (req, res) => {
     const profile = await loadUserProfileForEmail(req.session.email, req);
     return res.json({ ...profile, email: req.session.email });
   } catch (err) {
-    const status = err.status || 502;
-    return clientError(res, status, "Failed to load profile");
+    const status = isTimeoutError(err) ? timeoutStatusCode(err) : err.status || 502;
+    return clientError(
+      res,
+      status,
+      publicMessageFromErr(err, "Не удалось загрузить профиль", { context: "профиль" }),
+    );
   }
 });
 
@@ -610,13 +609,13 @@ app.get("/api/me/devices", requireSession, async (req, res) => {
       if (hw) {
         return res.json({ devices: hw.devices, total: hw.total });
       }
-      return clientError(res, 502, "Failed to load devices");
+      return clientError(res, 502, "Не удалось загрузить устройства");
     }
 
     const baseUrl = process.env.REMNAWAVE_URL || "https://remna.2oo.uk";
     const token = process.env.REMNAWAVE_TOKEN;
     if (!token) {
-      return clientError(res, 500, "Device API not configured");
+      return clientError(res, 500, "Сервис устройств временно недоступен");
     }
 
     const r = await fetchWithTimeout(`${baseUrl}/api/hwid/devices/${encodeURIComponent(userUuid)}`, {
@@ -642,7 +641,7 @@ app.delete("/api/me/devices/:hwid", requireSession, async (req, res) => {
 
     const hwidValue = typeof req.params.hwid === "string" ? req.params.hwid.trim() : "";
     if (!HWID_RE.test(hwidValue)) {
-      return clientError(res, 400, "Invalid hwid");
+      return clientError(res, 400, "Некорректный идентификатор устройства");
     }
 
     const rmwUrl = rmwBaseUrl();
@@ -668,7 +667,7 @@ app.delete("/api/me/devices/:hwid", requireSession, async (req, res) => {
     const baseUrl = process.env.REMNAWAVE_URL || "https://remna.2oo.uk";
     const token = process.env.REMNAWAVE_TOKEN;
     if (!token) {
-      return clientError(res, 500, "Device API not configured");
+      return clientError(res, 500, "Сервис устройств временно недоступен");
     }
 
     const r = await fetchWithTimeout(`${baseUrl}/api/hwid/devices/delete`, {
@@ -718,7 +717,7 @@ app.get("/api/billing/meta", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "billing meta failed");
-    return clientError(res, 502, "Upstream error");
+    return clientError(res, 502, "Сервис оплаты временно недоступен");
   }
 });
 
@@ -726,44 +725,44 @@ app.post("/api/checkout", requireSession, checkoutSessionLimiter, async (req, re
   try {
     const parsed = checkoutSchema.safeParse(req.body);
     if (!parsed.success) {
-      return clientError(res, 400, "Invalid checkout request");
+      return clientError(res, 400, "Некорректный запрос на оплату");
     }
 
     const { product_key, payment_method } = parsed.data;
     if (!VALID_CHECKOUT_PRODUCTS.has(product_key)) {
-      return clientError(res, 400, "Invalid product_key");
+      return clientError(res, 400, "Некорректный тариф");
     }
 
     const tariff_key = PRODUCT_TO_TARIFF_KEY[product_key];
     const pm = normalizeCheckoutPaymentMethod(payment_method);
     if (pm === null) {
-      return clientError(res, 400, "Invalid payment_method");
+      return clientError(res, 400, "Некорректный способ оплаты");
     }
 
     const ref = assertValidUuid(req.session.userUuid);
 
     const { successUrl: returnUrl, cancelUrl: failedUrl } = getBillingRedirectUrls();
     if (!isValidHttpsUrl(returnUrl) || !isValidHttpsUrl(failedUrl)) {
-      return clientError(res, 500, "Billing redirect URLs misconfigured");
+      return clientError(res, 500, "Оплата временно недоступна");
     }
 
     const rmwUrl = rmwBaseUrl();
     const rmwKey = rmwApiKey();
     if (!rmwUrl || !rmwKey) {
-      return clientError(res, 500, "Billing not configured");
+      return clientError(res, 500, "Оплата временно недоступна");
     }
 
     try {
       const meta = await getRmwBillingMeta({ allowCache: true });
       if (!meta.payments.some((p) => p.id === pm)) {
-        return clientError(res, 400, "Unsupported payment_method");
+        return clientError(res, 400, "Этот способ оплаты не поддерживается");
       }
       if (!meta.products.some((p) => p.name === tariff_key)) {
-        return clientError(res, 400, "Unsupported product_key");
+        return clientError(res, 400, "Этот тариф не поддерживается");
       }
     } catch (err) {
       req.log.error({ err }, "billing meta validation failed");
-      return clientError(res, 502, "Upstream error");
+      return clientError(res, 502, "Сервис оплаты временно недоступен");
     }
 
     const idempotencyKey = base64url(randomBytes(16));
@@ -790,12 +789,12 @@ app.post("/api/checkout", requireSession, checkoutSessionLimiter, async (req, re
     try {
       data = text ? JSON.parse(text) : {};
     } catch {
-      return clientError(res, 502, "Upstream error");
+      return clientError(res, 502, "Сервис оплаты временно недоступен");
     }
 
     if (!r.ok) {
       req.log.warn({ status: r.status }, "RMW checkout failed");
-      return clientError(res, r.status >= 400 && r.status < 600 ? r.status : 502, "Checkout failed");
+      return clientError(res, r.status >= 400 && r.status < 600 ? r.status : 502, "Не удалось создать платёж");
     }
 
     const paymentUrl =
@@ -805,7 +804,7 @@ app.post("/api/checkout", requireSession, checkoutSessionLimiter, async (req, re
 
     if (paymentUrl && !isAllowedPaymentUrl(paymentUrl)) {
       req.log.error({ paymentUrlHost: new URL(paymentUrl).hostname }, "payment_url host not allowed");
-      return clientError(res, 502, "Invalid payment URL from upstream");
+      return clientError(res, 502, "Получена некорректная ссылка на оплату");
     }
 
     return res.json(data);

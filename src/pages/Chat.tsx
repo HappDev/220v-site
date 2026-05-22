@@ -238,7 +238,7 @@ function ChatAttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
         target="_blank"
         rel="noreferrer"
       >
-        <img src={attachment.url} alt={fileName} loading="lazy" />
+        <img src={attachment.url} alt={fileName} loading="lazy" decoding="async" />
         <span>{fileName}</span>
       </a>
     );
@@ -247,7 +247,7 @@ function ChatAttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
   if (kind === "video") {
     return (
       <div className="support2-attachment support2-attachment--video">
-        <video src={attachment.url} controls preload="metadata" />
+        <video src={attachment.url} controls preload="metadata" playsInline />
         <a href={attachment.url} target="_blank" rel="noreferrer">
           {fileName}
         </a>
@@ -298,6 +298,7 @@ const Chat = () => {
   const [onlineCount, setOnlineCount] = useState<number | null>(null);
   const [operatorTyping, setOperatorTyping] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [keyboardInset, setKeyboardInset] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -370,7 +371,7 @@ const Chat = () => {
     const data = await talkmePost<ClientSearchResponse>("/talkme/client-search", {}, handleAuthError);
     if (!mountedRef.current) return false;
     return applyClientSearchResponse(data);
-  }, [applyClientSearchResponse, handleAuthError]);
+  }, [applyClientSearchResponse, email, handleAuthError]);
 
   const loadMessagesByClientId = useCallback(async (nextClientId: string): Promise<void> => {
     const messagesData = await talkmePost<MessagesResponse>(
@@ -547,6 +548,25 @@ const Chat = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end" });
   }, [messages, operatorTyping]);
+
+  useEffect(() => {
+    const visualViewport = window.visualViewport;
+    if (!visualViewport) return;
+
+    const updateKeyboardInset = () => {
+      const inset = Math.max(0, window.innerHeight - visualViewport.height - visualViewport.offsetTop);
+      setKeyboardInset(Math.round(inset));
+      messagesEndRef.current?.scrollIntoView({ block: "end" });
+    };
+
+    updateKeyboardInset();
+    visualViewport.addEventListener("resize", updateKeyboardInset);
+    visualViewport.addEventListener("scroll", updateKeyboardInset);
+    return () => {
+      visualViewport.removeEventListener("resize", updateKeyboardInset);
+      visualViewport.removeEventListener("scroll", updateKeyboardInset);
+    };
+  }, []);
 
   useEffect(() => {
     const nextPreviewUrls = new Set(
@@ -766,7 +786,11 @@ const Chat = () => {
                   <div ref={messagesEndRef} />
                 </div>
 
-                <form className="support2-chat__form" onSubmit={handleSubmit}>
+                <form
+                  className="support2-chat__form"
+                  onSubmit={handleSubmit}
+                  style={keyboardInset ? { paddingBottom: keyboardInset } : undefined}
+                >
                   <textarea
                     ref={textareaRef}
                     value={draft}
@@ -775,10 +799,13 @@ const Chat = () => {
                       resizeDraftTextarea(event.currentTarget);
                     }}
                     placeholder="Опишите вопрос..."
+                    enterKeyHint="send"
                     rows={1}
                     disabled={!email || sending}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                      const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
+                      if (event.key === "Enter" && (event.metaKey || event.ctrlKey || (coarsePointer && !event.shiftKey))) {
+                        event.preventDefault();
                         event.currentTarget.form?.requestSubmit();
                       }
                     }}

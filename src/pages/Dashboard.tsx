@@ -297,8 +297,8 @@ const Dashboard = () => {
         } else {
           setError(data?.error || "Не удалось получить данные");
         }
-      } catch (err: any) {
-        setError(err.message || "Ошибка загрузки данных");
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Ошибка загрузки данных");
       } finally {
         setLoading(false);
       }
@@ -477,8 +477,8 @@ const Dashboard = () => {
       } else {
         toast.error("Не удалось получить ссылку на оплату");
       }
-    } catch (err: any) {
-      toast.error(err.message || "Ошибка при создании платежа");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Ошибка при создании платежа");
     } finally {
       setPaymentLoading(null);
     }
@@ -968,7 +968,7 @@ const Dashboard = () => {
 
       {/* Devices Modal */}
       <Dialog open={devicesOpen} onOpenChange={setDevicesOpen}>
-        <DialogContent className="dash-modal max-h-[80vh] overflow-y-auto sm:max-w-md">
+        <DialogContent className="dash-modal max-h-[80dvh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Подключённые устройства</DialogTitle>
             <DialogDescription asChild>
@@ -1045,6 +1045,10 @@ const Dashboard = () => {
                   <img
                     alt="QR-Code"
                     className="h-52 w-52"
+                    width={220}
+                    height={220}
+                    loading="lazy"
+                    decoding="async"
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrUrl)}`}
                   />
                 </div>
@@ -1255,6 +1259,11 @@ const Dashboard = () => {
               value={promoCode}
               onChange={(e) => setPromoCode(e.target.value)}
               placeholder="Введите промокод"
+              inputMode="text"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              enterKeyHint="done"
               className="dash-modal__input"
             />
             <button
@@ -1270,7 +1279,7 @@ const Dashboard = () => {
 
       {/* About Us Modal */}
       <Dialog open={aboutOpen} onOpenChange={setAboutOpen}>
-        <DialogContent className="dash-modal max-h-[85vh] overflow-y-auto sm:max-w-md">
+        <DialogContent className="dash-modal max-h-[85dvh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>О нас</DialogTitle>
             <DialogDescription className="sr-only">

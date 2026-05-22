@@ -2,6 +2,7 @@ import { Router } from "express";
 import { randomBytes } from "node:crypto";
 import { ALLOWED_EMAIL_DOMAINS, SESSION_TTL_SEC } from "../config.mjs";
 import { clientError, serverError } from "../http/errors.mjs";
+import { isTimeoutError, publicMessageFromErr, timeoutStatusCode } from "../http/userMessages.mjs";
 import { redis } from "../redis.mjs";
 import {
   sendCodeIpHourLimiter,
@@ -50,7 +51,7 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
       const snapshot = await buildRedisAuthSnapshot();
       return res.json(snapshot);
     } catch (err) {
-      return serverError(res, req, err, "Failed to load Redis auth data");
+      return serverError(res, req, err, "Не удалось загрузить данные Redis");
     }
   });
 
@@ -64,7 +65,7 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
         const parsed = sendCodeSchema.safeParse(req.body);
         if (!parsed.success) {
           await recordAuthEvent("send_code_invalid_request", req, { status: "rejected" });
-          return clientError(res, 400, "Invalid email");
+          return clientError(res, 400, "Некорректный email");
         }
         const email = parsed.data.email;
         const atIdx = email.indexOf("@");
@@ -91,7 +92,7 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
         const cooldownResult = await acquireOtpCooldown(email, owner, 60);
         if (cooldownResult !== "OK") {
           await recordAuthEvent("send_code_cooldown", req, { email, status: "rejected" });
-          return clientError(res, 429, "Please wait before requesting another code");
+          return clientError(res, 429, "Подождите перед повторной отправкой кода");
         }
 
         const code = generateOtpCode();
@@ -126,7 +127,7 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
             },
             "send-code mailer failed",
           );
-          return res.status(502).json({ error: "Failed to send code" });
+          return res.status(502).json({ error: "Не удалось отправить код" });
         }
 
         req.log.info(
@@ -146,7 +147,7 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
       const parsed = verifySchema.safeParse(req.body);
       if (!parsed.success) {
         await recordAuthEvent("verify_invalid_request", req, { status: "rejected" });
-        return clientError(res, 400, "Invalid request");
+        return clientError(res, 400, "Некорректный запрос");
       }
       const { email, code } = parsed.data;
 
@@ -184,27 +185,31 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
           req.log.warn({ emailHash: emailHash(email), tries: otpResult.tries }, "otp verify failed");
         }
         const messages = {
-          missing: "Code expired or not found",
-          corrupt: "Code expired or not found",
-          too_many_tries: "Too many attempts. Request a new code.",
-          bad_code: "Invalid code",
+          missing: "Код истёк или не найден",
+          corrupt: "Код истёк или не найден",
+          too_many_tries: "Слишком много попыток. Запросите новый код.",
+          bad_code: "Неверный код",
         };
-        return clientError(res, otpResult.status, messages[otpResult.reason] || "Invalid code");
+        return clientError(res, otpResult.status, messages[otpResult.reason] || "Неверный код");
       }
 
       let profile;
       try {
         profile = await loadUserProfile(email, req);
       } catch (err) {
-        const status = err.status || 502;
+        const status = isTimeoutError(err) ? timeoutStatusCode(err) : err.status || 502;
         await recordAuthEvent("verify_profile_failed", req, { email, status: "failed" });
-        return clientError(res, status, "Could not complete login");
+        return clientError(
+          res,
+          status,
+          publicMessageFromErr(err, "Не удалось завершить вход", { context: "авторизация" }),
+        );
       }
 
       const userUuid = extractUserUuid(profile);
       if (!userUuid) {
         await recordAuthEvent("verify_profile_invalid", req, { email, status: "failed" });
-        return clientError(res, 502, "Could not complete login");
+        return clientError(res, 502, "Не удалось завершить вход");
       }
 
       const sid = base64url(randomBytes(32));

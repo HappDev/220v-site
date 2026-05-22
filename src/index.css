@@ -4,44 +4,44 @@
 
 @layer base {
   :root {
-    --background: 40 30% 95%;
-    --foreground: 30 20% 20%;
+    --background: 0 0% 4%;
+    --foreground: 0 0% 100%;
 
-    --card: 40 40% 99%;
-    --card-foreground: 30 20% 20%;
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 40 40% 99%;
-    --popover-foreground: 30 20% 20%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 0 0% 0%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 74 100% 62%;
+    --primary-foreground: 0 0% 4%;
 
-    --secondary: 30 20% 85%;
-    --secondary-foreground: 30 20% 25%;
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 38 30% 92%;
-    --muted-foreground: 30 15% 45%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 60%;
 
-    --accent: 0 0% 0%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 74 100% 62%;
+    --accent-foreground: 0 0% 4%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 35 25% 85%;
-    --input: 35 25% 85%;
-    --ring: 0 0% 0%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 74 100% 62%;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 40 30% 97%;
-    --sidebar-foreground: 30 20% 20%;
-    --sidebar-primary: 0 0% 0%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 38 30% 92%;
-    --sidebar-accent-foreground: 30 20% 20%;
-    --sidebar-border: 35 25% 85%;
-    --sidebar-ring: 0 0% 0%;
+    --sidebar-background: 0 0% 4%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 74 100% 62%;
+    --sidebar-primary-foreground: 0 0% 4%;
+    --sidebar-accent: 0 0% 10%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 15%;
+    --sidebar-ring: 74 100% 62%;
   }
 }
 
@@ -50,7 +50,31 @@
     @apply border-border;
   }
 
+  html {
+    max-width: 100%;
+    color-scheme: dark;
+    background-color: #0a0a0a;
+  }
+
   body {
     @apply bg-background text-foreground;
+    max-width: 100%;
+    overflow-x: clip;
+    overscroll-behavior-x: contain;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  @media (hover: none) and (pointer: coarse) {
+    body {
+      overscroll-behavior-y: none;
+    }
+  }
+
+  img,
+  video,
+  iframe,
+  canvas,
+  svg {
+    max-width: 100%;
   }
 }

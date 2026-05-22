@@ -68,7 +68,7 @@ const Support = () => {
                   </div>
 
                   <div className="support-chat__frame">
-                    <div id="TalkMe-container" style={{ height: 400, width: "100%" }} />
+                    <div id="TalkMe-container" style={{ height: "clamp(320px, 56dvh, 520px)", width: "100%" }} />
                   </div>
                 </section>
               </div>

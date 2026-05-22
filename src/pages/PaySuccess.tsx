@@ -34,7 +34,15 @@ const PaySuccess = () => {
             <article className="pay-success__card" aria-labelledby="pay-success-title">
               <div className="pay-success__mascot-wrap">
                 <div className="pay-success__mascot-glow" aria-hidden="true" />
-                <img src={successMascot} alt="Маскот 220v" className="pay-success__mascot" />
+                <img
+                  src={successMascot}
+                  alt="Маскот 220v"
+                  className="pay-success__mascot"
+                  width={1024}
+                  height={910}
+                  loading="lazy"
+                  decoding="async"
+                />
               </div>
 
               <div className="pay-success__badge">

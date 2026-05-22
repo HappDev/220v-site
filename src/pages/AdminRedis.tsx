@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Database, Loader2, RefreshCw, ShieldAlert } from "lucide-react";
 import { apiBase } from "@/lib/api";
+import { formatUserError } from "@/lib/errorMessages";
 import { Button } from "@/components/ui/button";
 
 type CounterEntry = { key: string; count: number };
@@ -94,7 +95,7 @@ function formatTtl(ttlSec: number) {
 }
 
 function asErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Не удалось загрузить данные";
+  return formatUserError(error, "Не удалось загрузить данные");
 }
 
 function StatCard({ label, value }: { label: string; value: number }) {
@@ -308,7 +309,7 @@ export default function AdminRedis() {
   }, [load, token]);
 
   return (
-    <div className="min-h-screen bg-background p-4 text-foreground sm:p-6">
+    <div className="min-h-[100svh] min-h-[100dvh] bg-background p-4 text-foreground sm:p-6">
       <div className="mx-auto flex max-w-7xl flex-col gap-5">
         <header className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-border">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
@@ -333,7 +334,9 @@ export default function AdminRedis() {
               value={token}
               onChange={(event) => setToken(event.target.value)}
               placeholder="ADMIN_REDIS_TOKEN"
-              className="h-10 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              autoComplete="current-password"
+              enterKeyHint="go"
+              className="h-10 flex-1 rounded-lg border border-border bg-background px-3 text-base outline-none focus:ring-2 focus:ring-ring md:text-sm"
             />
             <Button variant="outline" onClick={() => {
               localStorage.removeItem(TOKEN_STORAGE_KEY);

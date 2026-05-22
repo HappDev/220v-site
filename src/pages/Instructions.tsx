@@ -276,7 +276,7 @@ const ScreenshotGallery = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={`dash-modal max-h-[90vh] overflow-hidden ${large ? "sm:max-w-4xl" : "sm:max-w-lg"}`}
+        className={`dash-modal max-h-[90dvh] overflow-hidden ${large ? "sm:max-w-4xl" : "sm:max-w-lg"}`}
       >
         <DialogHeader>
           <DialogTitle>Скриншоты</DialogTitle>
@@ -291,7 +291,9 @@ const ScreenshotGallery = ({
           <img
             src={images[idx]}
             alt={`Скриншот ${idx + 1}`}
-            className={`dash-modal__gallery-img ${large ? "max-h-[80vh]" : "max-h-[65vh]"}`}
+            className={`dash-modal__gallery-img ${large ? "max-h-[80dvh]" : "max-h-[65dvh]"}`}
+            loading="lazy"
+            decoding="async"
           />
           <button type="button" onClick={next} className="dash-modal__gallery-nav" aria-label="Следующий">
             <ChevronRight className="h-5 w-5" />
@@ -646,6 +648,10 @@ const Instructions = () => {
                 <img
                   alt="QR-Code"
                   className="h-52 w-52"
+                  width={220}
+                  height={220}
+                  loading="lazy"
+                  decoding="async"
                   src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
                     subscriptionUrl,
                   )}`}

@@ -2,9 +2,31 @@
 <html lang="ru-RU">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/jpeg" href="/favicon-32x32.jpg" sizes="32x32" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.jpg" sizes="1024x1024" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="color-scheme" content="dark" />
+    <style>
+      html,
+      body {
+        background-color: #0a0a0a;
+        color: #ffffff;
+      }
+    </style>
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="/favicon-32.png" sizes="32x32" />
+    <link rel="icon" type="image/png" href="/icon-192.png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon-180.png" sizes="180x180" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+    />
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/WiseSans-Heavy.woff2" crossorigin />
     <title>220v — Оставайтесь невидимыми для посторонних</title>
     <meta name="description" content="220v — надёжный сервис для защиты в интернете. Скрывайте данные, шифруйте трафик и получите свободу в интернете на всех ваших устройствах.">
     <meta name="author" content="220v" />
@@ -19,7 +41,7 @@
   <meta name="twitter:description" content="220v — надёжный сервис для защиты в интернете. Скрывайте данные, шифруйте трафик и получите свободу в интернете на всех ваших устройствах.">
 
 <!-- Begin Talk-Me {literal} -->
-<script>
+<script defer>
   (function(){(function c(d,w,m,i) {
       window.supportAPIMethod = m;
       var s = d.createElement('script');

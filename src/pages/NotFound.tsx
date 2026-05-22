@@ -9,11 +9,14 @@ const NotFound = () => {
   }, [location.pathname]);
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-black px-4 text-center">
+    <div className="flex min-h-[100svh] min-h-[100dvh] flex-col items-center justify-center bg-black px-4 text-center">
       <img
         src="/404-illustration.png"
         alt=""
-        className="max-h-[min(42.5vh,450px)] w-auto max-w-full object-contain"
+        className="max-h-[min(42.5dvh,450px)] w-auto max-w-full object-contain"
+        width={1024}
+        height={888}
+        decoding="async"
       />
       <h1 className="mt-6 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
         Ошибка 404

@@ -16,7 +16,7 @@ export const LandingHeader = ({ nav, cta }: LandingHeaderProps) => {
     <header className="header">
       <div className="container header__inner">
         <Link to="/" className="logo" aria-label="220v">
-          <img src={logo220v} alt="220v" className="logo__img" />
+          <img src={logo220v} alt="220v" className="logo__img" width={1254} height={1254} decoding="async" />
         </Link>
 
         <nav

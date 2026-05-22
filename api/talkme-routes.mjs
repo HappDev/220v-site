@@ -5,6 +5,8 @@ import { dirname, extname, resolve } from "node:path";
 import express from "express";
 import multer from "multer";
 import { clientError } from "./http/errors.mjs";
+import { fetchWithTimeout } from "./http/fetchWithTimeout.mjs";
+import { formatTimeoutMessage, isTimeoutError, publicMessageFromErr } from "./http/userMessages.mjs";
 import {
   chatUploadLimiter,
   talkmeIpLimiter,
@@ -161,19 +163,19 @@ async function assertClientLookup(req, res, body) {
   const hasClientId = rawClientId.length > 0;
 
   if (!hasSearchId && !hasClientId) {
-    clientError(res, 400, "searchId or clientId is required");
+    clientError(res, 400, "Требуется searchId или clientId");
     return null;
   }
 
   if (hasClientId && rawClientId !== expectedClientId) {
-    clientError(res, 403, "Invalid clientId");
+    clientError(res, 403, "Недопустимый clientId");
     return null;
   }
 
   if (hasSearchId) {
     const clients = await findTalkMeClientsForEmail(req.session.email);
     if (!clients.some((c) => c.searchId === body.searchId)) {
-      clientError(res, 403, "Invalid searchId");
+      clientError(res, 403, "Недопустимый searchId");
       return null;
     }
   }
@@ -186,11 +188,11 @@ async function assertClientLookup(req, res, body) {
 function assertSessionClientId(req, res, clientId) {
   const trimmed = typeof clientId === "string" ? clientId.trim() : "";
   if (!trimmed) {
-    clientError(res, 400, "clientId is required");
+    clientError(res, 400, "Требуется clientId");
     return null;
   }
   if (trimmed !== getTalkMeIdentity(req).clientId) {
-    clientError(res, 403, "Invalid clientId");
+    clientError(res, 403, "Недопустимый clientId");
     return null;
   }
   return trimmed;
@@ -214,6 +216,27 @@ function talkmeToken() {
   return process.env.TALKME_API_TOKEN?.trim() || process.env.VITE_SUPPORT_CHAT_API_KEY?.trim() || "";
 }
 
+function talkmeNetworkError(netErr) {
+  if (isTimeoutError(netErr)) {
+    const err = new Error(formatTimeoutMessage(netErr.timeoutMs, "чат поддержки"));
+    err.isTimeout = true;
+    err.timeoutMs = netErr.timeoutMs;
+    err.statusCode = 504;
+    return err;
+  }
+
+  const detail = netErr?.message || String(netErr || "неизвестная ошибка");
+  const err = new Error(`Ошибка сети при обращении к чату: ${detail}`);
+  err.statusCode = 502;
+  return err;
+}
+
+function talkmeRouteError(err, fallback = "Ошибка чата") {
+  const message = publicMessageFromErr(err, fallback, { context: "чат поддержки" });
+  const status = err?.statusCode || (isTimeoutError(err) ? 504 : 500);
+  return { message, status };
+}
+
 async function talkmeRequest(path, body, { retries = 1 } = {}) {
   const token = talkmeToken();
   if (!token) throw new Error("TALKME_API_TOKEN is not configured");
@@ -222,7 +245,7 @@ async function talkmeRequest(path, body, { retries = 1 } = {}) {
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     let r;
     try {
-      r = await fetch(`${TALKME_API_BASE}${path}`, {
+      r = await fetchWithTimeout(`${TALKME_API_BASE}${path}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -238,11 +261,7 @@ async function talkmeRequest(path, body, { retries = 1 } = {}) {
         await new Promise((rs) => setTimeout(rs, 250));
         continue;
       }
-      const err = new Error(
-        `Talk-Me network error: ${netErr?.message || netErr}`,
-      );
-      err.statusCode = 502;
-      throw err;
+      throw talkmeNetworkError(netErr);
     }
 
     const text = await r.text();
@@ -250,13 +269,13 @@ async function talkmeRequest(path, body, { retries = 1 } = {}) {
     try {
       data = text ? JSON.parse(text) : {};
     } catch {
-      const err = new Error("Invalid JSON from Talk-Me API");
+      const err = new Error("Некорректный ответ от сервера чата");
       err.statusCode = 502;
       throw err;
     }
 
     if (!r.ok || data.success === false) {
-      const errMsg = data?.error?.descr || `Talk-Me error (${r.status})`;
+      const errMsg = data?.error?.descr || `Ошибка чата (${r.status})`;
       const err = new Error(errMsg);
       err.statusCode = r.status >= 400 && r.status < 600 ? r.status : 502;
       err.talkmeErrorDescr = data?.error?.descr || null;
@@ -267,11 +286,7 @@ async function talkmeRequest(path, body, { retries = 1 } = {}) {
   }
 
   // Сюда формально попасть нельзя (return/throw в каждой ветке), но на всякий случай.
-  const err = new Error(
-    `Talk-Me network error: ${lastNetworkErr?.message || "unknown"}`,
-  );
-  err.statusCode = 502;
-  throw err;
+  throw talkmeNetworkError(lastNetworkErr);
 }
 
 /** Best-effort label from Talk-Me /chat/message/getDialogStatusList result shape. */
@@ -391,7 +406,8 @@ function countOnlineOperatorsFromGetListResult(result) {
     const clients = await findTalkMeClientsForEmail(email);
     return res.json({ clients });
   } catch (err) {
-    return res.status(err.statusCode || 500).json({ error: err.message });
+    const { message, status } = talkmeRouteError(err);
+    return res.status(status).json({ error: message });
   }
 });
 
@@ -432,7 +448,8 @@ function countOnlineOperatorsFromGetListResult(result) {
 
     return res.json({ messages, count: result?.count || 0 });
   } catch (err) {
-    return res.status(err.statusCode || 500).json({ error: err.message });
+    const { message, status } = talkmeRouteError(err);
+    return res.status(status).json({ error: message });
   }
 });
 
@@ -554,11 +571,11 @@ async function setTalkmeClientInfo({ clientId, name, email, customData }) {
       typeof attachmentName === "string" ? attachmentName.trim() : "";
 
     if (!trimmedText && !trimmedAttachmentUrl) {
-      return res.status(400).json({ error: "text or attachmentUrl is required" });
+      return res.status(400).json({ error: "Требуется текст или файл" });
     }
 
     if (trimmedAttachmentUrl && !isAllowedAttachmentUrl(trimmedAttachmentUrl, req)) {
-      return res.status(400).json({ error: "attachmentUrl must point to an uploaded support file" });
+      return res.status(400).json({ error: "Ссылка на вложение должна указывать на загруженный файл" });
     }
 
     const messageParts = [];
@@ -606,7 +623,8 @@ async function setTalkmeClientInfo({ clientId, name, email, customData }) {
 
     return res.json({ messageId: result?.id ?? null, clientId });
   } catch (err) {
-    return res.status(err.statusCode || 500).json({ error: err.message });
+    const { message, status } = talkmeRouteError(err);
+    return res.status(status).json({ error: message });
   }
 });
 
@@ -615,11 +633,11 @@ async function setTalkmeClientInfo({ clientId, name, email, customData }) {
     const { messageId, status, operatorLogin } = req.body || {};
     const mid = Number(messageId);
     if (!Number.isInteger(mid) || mid <= 0) {
-      return res.status(400).json({ error: "messageId must be a positive integer" });
+      return res.status(400).json({ error: "Некорректный идентификатор сообщения" });
     }
     const allowedStatuses = new Set(["delivered", "readed"]);
     if (typeof status !== "string" || !allowedStatuses.has(status)) {
-      return res.status(400).json({ error: "status must be 'delivered' or 'readed'" });
+      return res.status(400).json({ error: "Некорректный статус сообщения" });
     }
 
     const body = { messageId: mid, status };
@@ -643,7 +661,8 @@ async function setTalkmeClientInfo({ clientId, name, email, customData }) {
     }
     return res.json({ success: true });
   } catch (err) {
-    return res.status(err.statusCode || 500).json({ error: err.message });
+    const { message, status } = talkmeRouteError(err);
+    return res.status(status).json({ error: message });
   }
 });
 
@@ -659,7 +678,8 @@ async function setTalkmeClientInfo({ clientId, name, email, customData }) {
 
     return res.json({ statusLabel, raw: result });
   } catch (err) {
-    return res.status(err.statusCode || 500).json({ error: err.message });
+    const { message, status } = talkmeRouteError(err);
+    return res.status(status).json({ error: message });
   }
 });
 
@@ -728,7 +748,7 @@ function getOperatorTyping(clientId) {
 
     const login = typeof operatorLogin === "string" ? operatorLogin.trim() : "";
     if (!login) {
-      return res.status(400).json({ error: "operatorLogin is required" });
+      return res.status(400).json({ error: "Требуется логин оператора" });
     }
 
     const trimmedClientId =
@@ -749,7 +769,7 @@ function getOperatorTyping(clientId) {
       if (!Number.isInteger(ttlNum) || ttlNum <= 0 || ttlNum > 300) {
         return res
           .status(400)
-          .json({ error: "ttl must be an integer between 1 and 300 seconds" });
+          .json({ error: "ttl должен быть целым числом от 1 до 300 секунд" });
       }
       body.ttl = ttlNum;
       ttlSeconds = ttlNum;
@@ -771,7 +791,8 @@ function getOperatorTyping(clientId) {
 
     return res.json({ success: true, ...(noop ? { noop: true } : {}) });
   } catch (err) {
-    return res.status(err.statusCode || 500).json({ error: err.message });
+    const { message, status } = talkmeRouteError(err);
+    return res.status(status).json({ error: message });
   }
 });
 
@@ -809,7 +830,8 @@ function getOperatorTyping(clientId) {
     const onlineCount = countOnlineOperatorsFromGetListResult(result);
     return res.json({ onlineCount });
   } catch (err) {
-    return res.status(err.statusCode || 500).json({ error: err.message });
+    const { message, status } = talkmeRouteError(err);
+    return res.status(status).json({ error: message });
   }
 });
 }

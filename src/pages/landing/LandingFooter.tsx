@@ -5,7 +5,7 @@ export const LandingFooter = () => (
   <footer className="footer">
     <div className="container footer__inner">
       <Link to="/" className="logo logo--footer" aria-label="220v">
-        <img src={logo220v} alt="220v" className="logo__img" />
+        <img src={logo220v} alt="220v" className="logo__img" width={1254} height={1254} decoding="async" />
       </Link>
       <nav className="footer__links" aria-label="Правовая информация">
         <Link to="/terms" className="footer__link">

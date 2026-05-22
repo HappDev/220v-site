@@ -17,7 +17,7 @@ export default function RequireVpnAuth({ children }: { children: React.ReactNode
 
   if (status === "checking") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex min-h-[100svh] min-h-[100dvh] items-center justify-center bg-background">
         <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" aria-label="Загрузка" />
       </div>
     );

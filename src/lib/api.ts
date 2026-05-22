@@ -1,3 +1,5 @@
+import { formatUserError } from "./errorMessages";
+
 export const apiBase =
   (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "/api";
 
@@ -15,7 +17,7 @@ async function parseResponse<T>(res: Response): Promise<ApiResult<T>> {
   try {
     parsed = text ? JSON.parse(text) : null;
   } catch {
-    parsed = { error: text || "Invalid JSON" };
+    parsed = { error: text || "Некорректный ответ сервера" };
   }
 
   const data = parsed as T | null;
@@ -26,8 +28,11 @@ async function parseResponse<T>(res: Response): Promise<ApiResult<T>> {
       parsed !== null &&
       "error" in parsed &&
       typeof (parsed as { error: unknown }).error === "string"
-        ? (parsed as { error: string }).error
-        : `Request failed (${res.status})`;
+        ? formatUserError(
+            new Error((parsed as { error: string }).error),
+            `Ошибка запроса (${res.status})`,
+          )
+        : formatUserError(null, `Ошибка запроса (${res.status})`);
     return { data, error: new Error(msg), status: res.status };
   }
 
@@ -48,14 +53,19 @@ async function apiFetch<T>(
     if (csrf) headers.set("X-CSRF-Token", csrf);
   }
 
-  const res = await fetch(`${apiBase}${path}`, {
-    ...init,
-    method,
-    headers,
-    credentials: "include",
-  });
+  try {
+    const res = await fetch(`${apiBase}${path}`, {
+      ...init,
+      method,
+      headers,
+      credentials: "include",
+    });
 
-  return parseResponse<T>(res);
+    return parseResponse<T>(res);
+  } catch (err) {
+    const message = formatUserError(err, "Не удалось выполнить запрос");
+    return { data: null, error: new Error(message), status: 0 };
+  }
 }
 
 export function apiGet<T>(path: string) {
