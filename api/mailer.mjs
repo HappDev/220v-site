@@ -99,6 +99,9 @@ function buildTransport() {
     "mailer transport created",
   );
   const secure = cfg.port === 465;
+  // Таймауты выбраны так, чтобы суммарно укладываться в proxy_read_timeout
+  // nginx для /api/auth/send-code (25s) с запасом. socketTimeout применяется
+  // к каждой отдельной операции чтения/записи, поэтому держим его умеренным.
   cachedTransport = nodemailer.createTransport({
     host: cfg.host,
     port: cfg.port,
@@ -108,9 +111,9 @@ function buildTransport() {
     pool: true,
     maxConnections: 3,
     maxMessages: 50,
-    connectionTimeout: 8_000,
-    greetingTimeout: 8_000,
-    socketTimeout: 15_000,
+    connectionTimeout: 7_000,
+    greetingTimeout: 7_000,
+    socketTimeout: 12_000,
     tls: { minVersion: "TLSv1.2" },
   });
   cachedTransportKey = key;
@@ -270,6 +273,7 @@ export async function sendOtpEmail({ email, code }) {
     "mailer sending otp email",
   );
 
+  const startedAtMs = Date.now();
   try {
     const info = await transport.sendMail({
       from: { name: from.name, address: from.email },
@@ -282,12 +286,18 @@ export async function sendOtpEmail({ email, code }) {
         "Auto-Submitted": "auto-generated",
       },
     });
+    const elapsedMs = Date.now() - startedAtMs;
     logger.info(
-      { emailHash: emailHash(email), messageId: info?.messageId || null },
+      {
+        emailHash: emailHash(email),
+        messageId: info?.messageId || null,
+        elapsedMs,
+      },
       "mailer otp email sent",
     );
     return { ok: true, messageId: info?.messageId || null };
   } catch (err) {
+    const elapsedMs = Date.now() - startedAtMs;
     const smtpErr = formatSmtpError(err);
     logger.error(
       {
@@ -296,6 +306,7 @@ export async function sendOtpEmail({ email, code }) {
         recipientDomain,
         fromEmail: from.email,
         smtp: smtpErr,
+        elapsedMs,
       },
       "mailer smtp send failed",
     );
