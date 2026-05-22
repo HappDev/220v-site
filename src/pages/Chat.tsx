@@ -298,7 +298,6 @@ const Chat = () => {
   const [onlineCount, setOnlineCount] = useState<number | null>(null);
   const [operatorTyping, setOperatorTyping] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [keyboardInset, setKeyboardInset] = useState(0);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const keyboardInsetRef = useRef(0);
@@ -570,25 +569,34 @@ const Chat = () => {
   }, [messages, operatorTyping, scrollMessagesToEnd]);
 
   useEffect(() => {
+    const root = document.documentElement;
     const visualViewport = window.visualViewport;
-    if (!visualViewport) return;
 
-    const updateKeyboardInset = () => {
-      const inset = Math.max(0, window.innerHeight - visualViewport.height - visualViewport.offsetTop);
-      const rounded = Math.round(inset);
-      const keyboardOpening = rounded > 0 && keyboardInsetRef.current === 0;
-      keyboardInsetRef.current = rounded;
-      setKeyboardInset(rounded);
+    const update = () => {
+      const height = visualViewport?.height ?? window.innerHeight;
+      root.style.setProperty("--chat-vh", `${Math.round(height)}px`);
 
-      if (keyboardOpening) {
-        textareaRef.current?.scrollIntoView({ block: "nearest", behavior: "auto" });
+      if (visualViewport) {
+        const inset = Math.max(
+          0,
+          window.innerHeight - visualViewport.height - visualViewport.offsetTop,
+        );
+        const rounded = Math.round(inset);
+        const keyboardOpening = rounded > 0 && keyboardInsetRef.current === 0;
+        keyboardInsetRef.current = rounded;
+        if (keyboardOpening) {
+          textareaRef.current?.scrollIntoView({ block: "nearest", behavior: "auto" });
+        }
       }
     };
 
-    updateKeyboardInset();
-    visualViewport.addEventListener("resize", updateKeyboardInset);
+    update();
+    visualViewport?.addEventListener("resize", update);
+    window.addEventListener("resize", update);
     return () => {
-      visualViewport.removeEventListener("resize", updateKeyboardInset);
+      visualViewport?.removeEventListener("resize", update);
+      window.removeEventListener("resize", update);
+      root.style.removeProperty("--chat-vh");
     };
   }, []);
 
@@ -713,7 +721,7 @@ const Chat = () => {
   };
 
   return (
-    <LandingShell className="landing-root--with-sidebar">
+    <LandingShell className="landing-root--with-sidebar landing-root--chat">
       <DashboardSidebar items={items} onLogout={handleLogout} email={email || undefined} />
 
       <main>
@@ -813,7 +821,6 @@ const Chat = () => {
                 <form
                   className="support2-chat__form"
                   onSubmit={handleSubmit}
-                  style={keyboardInset ? { paddingBottom: keyboardInset } : undefined}
                 >
                   <textarea
                     ref={textareaRef}
