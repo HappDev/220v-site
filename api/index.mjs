@@ -835,15 +835,9 @@ async function logMailerStartupStatus() {
 }
 
 if (process.env.NODE_ENV !== "test") {
-  redis
-    .connect()
-    .catch((err) => {
-      logger.error({ err }, "redis connect failed");
-    })
-    .finally(async () => {
-      await logMailerStartupStatus();
-      app.listen(port, "0.0.0.0", () => {
-        logger.info({ port }, "API listening");
-      });
-    });
+  void logMailerStartupStatus();
+
+  app.listen(port, "0.0.0.0", () => {
+    logger.info({ port, redisStatus: redis.status }, "API listening");
+  });
 }

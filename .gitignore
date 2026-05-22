@@ -15,6 +15,7 @@ dist
 dist-ssr
 coverage
 **/__snapshots__
+data/support-chat-uploads/
 *.local
 
 # Editor directories and files
