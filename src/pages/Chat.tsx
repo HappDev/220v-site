@@ -122,6 +122,10 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+/** Сообщения — каждые 8 с; мета (операторы, статус, typing) — каждые 20 с. */
+const CHAT_MESSAGES_POLL_MS = 8_000;
+const CHAT_META_POLL_MS = 20_000;
+
 function formatMessageTime(value: string): string {
   if (!value) return "";
   const date = new Date(value);
@@ -555,13 +559,49 @@ const Chat = () => {
   }, [loadMessages]);
 
   useEffect(() => {
-    void refreshMeta();
-    const timer = window.setInterval(() => {
+    if (typeof document === "undefined") return;
+
+    let messagesTimer: ReturnType<typeof window.setInterval> | null = null;
+    let metaTimer: ReturnType<typeof window.setInterval> | null = null;
+
+    const stopPolling = () => {
+      if (messagesTimer !== null) {
+        window.clearInterval(messagesTimer);
+        messagesTimer = null;
+      }
+      if (metaTimer !== null) {
+        window.clearInterval(metaTimer);
+        metaTimer = null;
+      }
+    };
+
+    const startPolling = () => {
+      stopPolling();
+      messagesTimer = window.setInterval(() => {
+        void loadMessages({ silent: true });
+      }, CHAT_MESSAGES_POLL_MS);
+      metaTimer = window.setInterval(() => {
+        void refreshMeta();
+      }, CHAT_META_POLL_MS);
+    };
+
+    const syncPolling = () => {
+      if (document.hidden) {
+        stopPolling();
+        return;
+      }
       void loadMessages({ silent: true });
       void refreshMeta();
-    }, 6000);
+      startPolling();
+    };
 
-    return () => window.clearInterval(timer);
+    syncPolling();
+    document.addEventListener("visibilitychange", syncPolling);
+
+    return () => {
+      document.removeEventListener("visibilitychange", syncPolling);
+      stopPolling();
+    };
   }, [loadMessages, refreshMeta]);
 
   useEffect(() => {

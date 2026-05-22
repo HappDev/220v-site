@@ -62,16 +62,18 @@ export const checkoutSessionLimiter = makeRateLimit({
   message: { error: "Слишком много попыток оплаты. Попробуйте позже." },
 });
 
+// Поллинг: сообщения 8 с, мета 20 с (до 3 req за цикл). До ~10 сессий на один IP (NAT).
+// Бюджет на сессию: ~113 + ~135 = ~248 req/15 мин + запас → 320; на IP: 3600 (≈320 × 10 + запас).
 export const talkmeIpLimiter = makeRateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 120,
+  max: 3600,
   prefix: "v220:rl:talkme:ip:",
   message: { error: "Слишком много запросов к чату. Попробуйте позже." },
 });
 
 export const talkmeSessionLimiter = makeRateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: 320,
   prefix: "v220:rl:talkme:sid:",
   keyGenerator: (req) => req.cookies?.[SESSION_COOKIE] || req.ip,
   message: { error: "Слишком много запросов к чату. Попробуйте позже." },
