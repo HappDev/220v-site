@@ -62,7 +62,7 @@ export type DashboardSidebarData = {
 
 export function useDashboardSidebarItems(): DashboardSidebarData {
   const navigate = useNavigate();
-  const { status: sessionStatus, email, user: sessionUser } = useSession();
+  const { status: sessionStatus, email, user: sessionUser, refresh: refreshSession } = useSession();
   const [userInfo, setUserInfo] = useState<SidebarUser>(() => ({
     userUuid: sessionUser?.userUuid ?? null,
     isPremium: readCachedIsPremium() || resolveIsPremium(sessionUser),
@@ -71,10 +71,6 @@ export function useDashboardSidebarItems(): DashboardSidebarData {
   const [userError, setUserError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (sessionStatus === "guest") {
-      navigate("/", { replace: true });
-      return;
-    }
     if (sessionStatus !== "authed") return;
 
     let cancelled = false;
@@ -109,11 +105,12 @@ export function useDashboardSidebarItems(): DashboardSidebarData {
     return () => {
       cancelled = true;
     };
-  }, [navigate, sessionStatus]);
+  }, [sessionStatus]);
 
   const handleLogout = async () => {
     await apiPost("/auth/logout");
     clearChatCompatCache();
+    await refreshSession();
     navigate("/");
   };
 

@@ -2,12 +2,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import PaySuccess from "./pages/PaySuccess";
 import PayFail from "./pages/PayFail";
-import Support from "./pages/Support";
 import Chat from "./pages/Chat";
 import Policy from "./pages/Policy";
 import Price from "./pages/Price";
@@ -20,6 +19,7 @@ import Terms from "./pages/Terms";
 import NotFound from "./pages/NotFound";
 import AdminRedis from "./pages/AdminRedis";
 import RequireVpnAuth from "./components/RequireVpnAuth";
+import { SessionProvider } from "./hooks/useSession";
 
 const queryClient = new QueryClient();
 
@@ -29,6 +29,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <SessionProvider>
         <Routes>
           <Route path="/" element={<Index />} />
           <Route
@@ -87,7 +88,7 @@ const App = () => (
             path="/support"
             element={
               <RequireVpnAuth>
-                <Support />
+                <Navigate to="/chat" replace />
               </RequireVpnAuth>
             }
           />
@@ -103,6 +104,7 @@ const App = () => (
           <Route path="/pay/fail" element={<PayFail />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </SessionProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

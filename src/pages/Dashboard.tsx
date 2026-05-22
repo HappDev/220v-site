@@ -258,7 +258,7 @@ const Dashboard = () => {
 
     const sp = new URLSearchParams(location.search);
     if (sp.get("support") === "1") {
-      navigate("/support", { replace: true });
+      navigate("/chat", { replace: true });
       return;
     }
 

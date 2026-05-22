@@ -83,7 +83,7 @@ async function talkmePost<T>(
 ): Promise<T> {
   const { data, error, status } = await apiPost<T>(path, body);
   if (error) {
-    if ((status === 401 || status === 403) && onAuthError) {
+    if (status === 401 && onAuthError) {
       onAuthError();
     }
     throw error;
@@ -104,7 +104,7 @@ async function uploadChatAttachment(
   );
 
   if (error) {
-    if ((status === 401 || status === 403) && onAuthError) {
+    if (status === 401 && onAuthError) {
       onAuthError();
     }
     throw error;

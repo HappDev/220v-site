@@ -54,6 +54,32 @@
     max-width: 100%;
     color-scheme: dark;
     background-color: #0a0a0a;
+    theme-color: #0a0a0a;
+  }
+
+  /*
+   * iOS Safari tints browser chrome from pixels at the viewport edges.
+   * These overlays keep the edge color fixed while toasts sit above them.
+   */
+  html::before,
+  html::after {
+    content: "";
+    position: fixed;
+    left: 0;
+    right: 0;
+    z-index: 2147483647;
+    pointer-events: none;
+    background-color: #0a0a0a;
+  }
+
+  html::before {
+    top: 0;
+    height: max(env(safe-area-inset-top, 0px), 1px);
+  }
+
+  html::after {
+    bottom: 0;
+    height: max(env(safe-area-inset-bottom, 0px), 1px);
   }
 
   body {

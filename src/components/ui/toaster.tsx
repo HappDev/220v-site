@@ -1,8 +1,20 @@
+import * as React from "react";
+
 import { useToast } from "@/hooks/use-toast";
 import { Toast, ToastClose, ToastDescription, ToastProvider, ToastTitle, ToastViewport } from "@/components/ui/toast";
+import { pinSafariThemeColor } from "@/lib/themeColor";
 
 export function Toaster() {
   const { toasts } = useToast();
+  const hasOpenToast = toasts.some((toast) => toast.open !== false);
+
+  React.useEffect(() => {
+    if (!hasOpenToast) return;
+
+    pinSafariThemeColor();
+    const intervalId = window.setInterval(pinSafariThemeColor, 300);
+    return () => window.clearInterval(intervalId);
+  }, [hasOpenToast]);
 
   return (
     <ToastProvider>

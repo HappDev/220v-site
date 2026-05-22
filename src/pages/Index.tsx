@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPost } from "@/lib/api";
+import { useSession } from "@/hooks/useSession";
 import { consumeVpnPendingRedirect, persistChatCompatCache } from "@/lib/vpnStorage";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 
@@ -70,6 +71,7 @@ const Index = () => {
   const [sessionReady, setSessionReady] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { refresh: refreshSession } = useSession();
 
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -149,6 +151,7 @@ const Index = () => {
 
       if (data?.user) {
         persistChatCompatCache({ email: normalizedEmail });
+        await refreshSession();
         navigate(hrefAfterLoginFromPendingSearch());
       } else {
         toast({ title: "Ошибка", description: data?.error || "Неверный код", variant: "destructive" });
