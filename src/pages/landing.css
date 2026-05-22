@@ -3128,9 +3128,7 @@ body.landing-no-scroll { overflow: hidden; }
   border: 1px solid var(--dm-border) !important;
   border-radius: 22px !important;
   padding: 26px !important;
-  box-shadow:
-    0 24px 80px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(198, 255, 61, 0.04) inset !important;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6) !important;
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
   overscroll-behavior: contain;
 }
