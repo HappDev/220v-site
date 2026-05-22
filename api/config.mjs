@@ -7,6 +7,7 @@ export const CSRF_COOKIE = "v220_csrf";
 export const SESSION_TTL_SEC = 60 * 24 * 60 * 60;
 export const SESSION_SLIDE_SEC = 30 * 24 * 60 * 60;
 export const OTP_TTL_SEC = 10 * 60;
+export const OTP_COOLDOWN_SEC = 60;
 export const OTP_MAX_TRIES = 5;
 export const FETCH_TIMEOUT_MS = 8000;
 export const AUTH_EVENT_LIST_KEY = "v220:auth:events";

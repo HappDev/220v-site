@@ -299,7 +299,9 @@ const Chat = () => {
   const [operatorTyping, setOperatorTyping] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [keyboardInset, setKeyboardInset] = useState(0);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const keyboardInsetRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const previewUrlsRef = useRef<Set<string>>(new Set());
@@ -316,6 +318,24 @@ const Chat = () => {
     if (clientId && hasTalkMeVisitor) return { clientId };
     return null;
   }, [clientId, hasTalkMeVisitor, searchId]);
+
+  const scrollMessagesToEnd = useCallback(() => {
+    const container = messagesContainerRef.current;
+    const endEl = messagesEndRef.current;
+    if (!container || !endEl) return;
+
+    const { overflowY } = window.getComputedStyle(container);
+    if (overflowY === "auto" || overflowY === "scroll") {
+      container.scrollTop = container.scrollHeight;
+      return;
+    }
+
+    const rect = endEl.getBoundingClientRect();
+    const viewHeight = window.visualViewport?.height ?? window.innerHeight;
+    if (rect.bottom > viewHeight - 12) {
+      window.scrollBy({ top: rect.bottom - viewHeight + 12, left: 0, behavior: "auto" });
+    }
+  }, []);
 
   const resizeDraftTextarea = useCallback((textarea: HTMLTextAreaElement | null) => {
     if (!textarea) return;
@@ -546,8 +566,8 @@ const Chat = () => {
   }, [loadMessages, refreshMeta]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ block: "end" });
-  }, [messages, operatorTyping]);
+    scrollMessagesToEnd();
+  }, [messages, operatorTyping, scrollMessagesToEnd]);
 
   useEffect(() => {
     const visualViewport = window.visualViewport;
@@ -555,16 +575,20 @@ const Chat = () => {
 
     const updateKeyboardInset = () => {
       const inset = Math.max(0, window.innerHeight - visualViewport.height - visualViewport.offsetTop);
-      setKeyboardInset(Math.round(inset));
-      messagesEndRef.current?.scrollIntoView({ block: "end" });
+      const rounded = Math.round(inset);
+      const keyboardOpening = rounded > 0 && keyboardInsetRef.current === 0;
+      keyboardInsetRef.current = rounded;
+      setKeyboardInset(rounded);
+
+      if (keyboardOpening) {
+        textareaRef.current?.scrollIntoView({ block: "nearest", behavior: "auto" });
+      }
     };
 
     updateKeyboardInset();
     visualViewport.addEventListener("resize", updateKeyboardInset);
-    visualViewport.addEventListener("scroll", updateKeyboardInset);
     return () => {
       visualViewport.removeEventListener("resize", updateKeyboardInset);
-      visualViewport.removeEventListener("scroll", updateKeyboardInset);
     };
   }, []);
 
@@ -740,7 +764,7 @@ const Chat = () => {
                   </div>
                 ) : null}
 
-                <div className="support2-chat__messages" aria-live="polite">
+                <div ref={messagesContainerRef} className="support2-chat__messages" aria-live="polite">
                   {initialLoading ? (
                     <div className="support2-chat__state">
                       <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />

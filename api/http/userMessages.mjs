@@ -14,7 +14,10 @@ export function isTimeoutError(err) {
   );
 }
 
-export function formatTimeoutMessage(timeoutMs = FETCH_TIMEOUT_MS, context) {
+export function formatOtpResendCooldownMessage(retryAfterSec) {
+  const sec = Math.max(1, Math.ceil(retryAfterSec));
+  return `Подождите ${sec} сек. перед повторной отправкой кода`;
+}
   const seconds = Math.max(1, Math.round(timeoutMs / 1000));
   const contextPart = context ? ` (${context})` : "";
   return `Превышено время ожидания ответа${contextPart}: ${seconds} сек. Сервер не успел ответить — попробуйте ещё раз через минуту.`;

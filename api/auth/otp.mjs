@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { OTP_MAX_TRIES, OTP_TTL_SEC } from "../config.mjs";
+import { OTP_COOLDOWN_SEC, OTP_MAX_TRIES, OTP_TTL_SEC } from "../config.mjs";
 import { redis } from "../redis.mjs";
 import { hashCode } from "./crypto.mjs";
 import { otpCooldownKey, otpKey } from "./keys.mjs";
@@ -19,8 +19,13 @@ function parseOtpPayload(raw) {
   }
 }
 
-export async function acquireOtpCooldown(email, owner, ttlSec = 60) {
+export async function acquireOtpCooldown(email, owner, ttlSec = OTP_COOLDOWN_SEC) {
   return redis.set(otpCooldownKey(email), owner, "EX", ttlSec, "NX");
+}
+
+export async function getOtpCooldownRemainingSec(email) {
+  const ttlSec = await redis.ttl(otpCooldownKey(email));
+  return ttlSec > 0 ? ttlSec : 0;
 }
 
 export async function putOtp(email, codeHash, owner) {

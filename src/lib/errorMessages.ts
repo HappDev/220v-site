@@ -1,5 +1,15 @@
 const FETCH_TIMEOUT_MS = 8000;
 
+export function formatResendCooldownMessage(seconds: number): string {
+  const sec = Math.max(1, Math.ceil(seconds));
+  return `Подождите ${sec} сек. перед повторной отправкой кода`;
+}
+
+export function formatResendCooldownButtonLabel(seconds: number): string {
+  const sec = Math.max(1, Math.ceil(seconds));
+  return `Повторная отправка через ${sec} сек.`;
+}
+
 function isTimeoutError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const e = err as { isTimeout?: boolean; name?: string; code?: string; message?: string };

@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPost } from "@/lib/api";
+import { formatResendCooldownButtonLabel } from "@/lib/errorMessages";
 import { useSession } from "@/hooks/useSession";
 import { consumeVpnPendingRedirect, persistChatCompatCache } from "@/lib/vpnStorage";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
@@ -68,6 +69,7 @@ const Index = () => {
   const [pricingOpen, setPricingOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resendCooldownSec, setResendCooldownSec] = useState(0);
   const [sessionReady, setSessionReady] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -91,19 +93,29 @@ const Index = () => {
     };
   }, [navigate]);
 
+  useEffect(() => {
+    if (resendCooldownSec <= 0) return;
+    const timer = window.setTimeout(() => {
+      setResendCooldownSec((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [resendCooldownSec]);
+
   const openLogin = () => {
     setLoginStep("email");
     setCode("");
+    setResendCooldownSec(0);
     setLoginOpen(true);
   };
 
   const closeLogin = () => {
     if (loading) return;
     setCode("");
+    setResendCooldownSec(0);
     setLoginOpen(false);
   };
 
-  const handleStart = async () => {
+  const handleSendCode = async () => {
     if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       toast({ title: "Ошибка", description: "Укажите корректный email", variant: "destructive" });
       return;
@@ -111,14 +123,24 @@ const Index = () => {
 
     setLoading(true);
     try {
-      const { data, error } = await apiPost<{ ok?: boolean; error?: string }>("/auth/send-code", {
-        email: normalizedEmail,
-      });
+      const { data, error, retryAfterSec } = await apiPost<{ ok?: boolean; error?: string; retryAfterSec?: number }>(
+        "/auth/send-code",
+        {
+          email: normalizedEmail,
+        },
+      );
 
-      if (error) throw error;
+      if (error) {
+        if (retryAfterSec) {
+          setResendCooldownSec(retryAfterSec);
+        }
+        toast({ title: "Ошибка", description: error.message, variant: "destructive" });
+        return;
+      }
 
       if (data?.ok) {
         setLoginStep("verify");
+        setResendCooldownSec(retryAfterSec ?? data.retryAfterSec ?? 60);
         toast({
           title: "✅ Код отправлен!",
           description: `Код подтверждения отправлен на ${normalizedEmail}`,
@@ -132,6 +154,10 @@ const Index = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleStart = () => {
+    void handleSendCode();
   };
 
   const handleVerify = async () => {
@@ -503,6 +529,19 @@ const Index = () => {
                 {loading ? "Проверка..." : "Подтвердить"}
               </button>
             </div>
+            <p className="form-link">
+              <button
+                type="button"
+                onClick={() => {
+                  void handleSendCode();
+                }}
+                disabled={loading || resendCooldownSec > 0}
+              >
+                {resendCooldownSec > 0
+                  ? formatResendCooldownButtonLabel(resendCooldownSec)
+                  : "Отправить код повторно"}
+              </button>
+            </p>
             <p className="form-link">
               <button
                 type="button"

@@ -2151,11 +2151,7 @@ body.landing-no-scroll { overflow: hidden; }
   .landing-root .app-stat__value {
     font-size: 20px;
   }
-  .landing-root .support2-chat {
-    min-height: 560px;
-  }
   .landing-root .support2-chat__messages {
-    min-height: 330px;
     padding: 12px;
   }
   .landing-root .support2-message__bubble {
@@ -2445,6 +2441,26 @@ body.landing-no-scroll { overflow: hidden; }
   }
   .landing-root--with-sidebar .app-page {
     padding-top: 72px;
+  }
+
+  /*
+   * Chat on iOS Safari: nested overflow + dvh fights document scroll and clips the top.
+   * Use a single page scroll on narrow viewports.
+   */
+  .landing-root--with-sidebar .support2-chat {
+    min-height: 0;
+    display: block;
+  }
+
+  .landing-root--with-sidebar .support-card.support2-chat {
+    overflow: visible;
+  }
+
+  .landing-root--with-sidebar .support2-chat__messages {
+    max-height: none;
+    min-height: 0;
+    flex: none;
+    overflow-y: visible;
   }
 }
 

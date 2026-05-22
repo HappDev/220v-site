@@ -1,6 +1,9 @@
 import { isTimeoutError, publicMessageFromErr, timeoutStatusCode } from "./userMessages.mjs";
 
-export function clientError(res, status, message) {
+export function clientError(res, status, message, extra) {
+  if (extra && typeof extra === "object") {
+    return res.status(status).json({ error: message, ...extra });
+  }
   return res.status(status).json({ error: message });
 }
 

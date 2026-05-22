@@ -1,8 +1,13 @@
 import { Router } from "express";
 import { randomBytes } from "node:crypto";
-import { ALLOWED_EMAIL_DOMAINS, SESSION_TTL_SEC } from "../config.mjs";
+import { ALLOWED_EMAIL_DOMAINS, OTP_COOLDOWN_SEC, SESSION_TTL_SEC } from "../config.mjs";
 import { clientError, serverError } from "../http/errors.mjs";
-import { isTimeoutError, publicMessageFromErr, timeoutStatusCode } from "../http/userMessages.mjs";
+import {
+  formatOtpResendCooldownMessage,
+  isTimeoutError,
+  publicMessageFromErr,
+  timeoutStatusCode,
+} from "../http/userMessages.mjs";
 import { redis } from "../redis.mjs";
 import {
   sendCodeIpHourLimiter,
@@ -27,6 +32,7 @@ import {
   clearOtpAndCooldown,
   consumeOtp,
   getCooldownDebugSnapshot,
+  getOtpCooldownRemainingSec,
   getOtpDebugSnapshot,
   putOtp,
 } from "./otp.mjs";
@@ -89,10 +95,13 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
         }
 
         const owner = base64url(randomBytes(16));
-        const cooldownResult = await acquireOtpCooldown(email, owner, 60);
+        const cooldownResult = await acquireOtpCooldown(email, owner, OTP_COOLDOWN_SEC);
         if (cooldownResult !== "OK") {
           await recordAuthEvent("send_code_cooldown", req, { email, status: "rejected" });
-          return clientError(res, 429, "Подождите перед повторной отправкой кода");
+          const retryAfterSec = await getOtpCooldownRemainingSec(email);
+          const message = formatOtpResendCooldownMessage(retryAfterSec || OTP_COOLDOWN_SEC);
+          res.set("Retry-After", String(retryAfterSec || OTP_COOLDOWN_SEC));
+          return clientError(res, 429, message, { retryAfterSec: retryAfterSec || OTP_COOLDOWN_SEC });
         }
 
         const code = generateOtpCode();
@@ -135,7 +144,7 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
           "send-code dispatched",
         );
         await recordAuthEvent("send_code_sent", req, { email, status: "ok" });
-        return res.json({ ok: true });
+        return res.json({ ok: true, retryAfterSec: OTP_COOLDOWN_SEC });
       } catch (err) {
         return serverError(res, req, err);
       }

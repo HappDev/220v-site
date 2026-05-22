@@ -9,7 +9,26 @@ function getCsrfToken(): string {
   return match ? decodeURIComponent(match[1]) : "";
 }
 
-type ApiResult<T> = { data: T | null; error: Error | null; status: number };
+type ApiResult<T> = { data: T | null; error: Error | null; status: number; retryAfterSec?: number };
+
+function readRetryAfterSec(res: Response, parsed: unknown): number | undefined {
+  if (typeof parsed === "object" && parsed !== null && "retryAfterSec" in parsed) {
+    const value = Number((parsed as { retryAfterSec: unknown }).retryAfterSec);
+    if (Number.isFinite(value) && value > 0) {
+      return Math.ceil(value);
+    }
+  }
+
+  const header = res.headers.get("Retry-After");
+  if (header) {
+    const value = Number(header);
+    if (Number.isFinite(value) && value > 0) {
+      return Math.ceil(value);
+    }
+  }
+
+  return undefined;
+}
 
 async function parseResponse<T>(res: Response): Promise<ApiResult<T>> {
   let parsed: unknown;
@@ -21,6 +40,7 @@ async function parseResponse<T>(res: Response): Promise<ApiResult<T>> {
   }
 
   const data = parsed as T | null;
+  const retryAfterSec = readRetryAfterSec(res, parsed);
 
   if (!res.ok) {
     const msg =
@@ -33,10 +53,10 @@ async function parseResponse<T>(res: Response): Promise<ApiResult<T>> {
             `Ошибка запроса (${res.status})`,
           )
         : formatUserError(null, `Ошибка запроса (${res.status})`);
-    return { data, error: new Error(msg), status: res.status };
+    return { data, error: new Error(msg), status: res.status, retryAfterSec };
   }
 
-  return { data, error: null, status: res.status };
+  return { data, error: null, status: res.status, retryAfterSec };
 }
 
 async function apiFetch<T>(
