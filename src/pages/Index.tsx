@@ -144,7 +144,7 @@ const Index = () => {
         toast({
           title: "✅ Код отправлен!",
           description: `Код подтверждения отправлен на ${normalizedEmail}`,
-          className: "bg-green-500 text-white border-green-600",
+          className: "bg-[#0a0a0a] text-white border-l-4 border-y border-r border-green-500",
         });
       } else {
         toast({ title: "Ошибка", description: data?.error || "Не удалось отправить код", variant: "destructive" });
