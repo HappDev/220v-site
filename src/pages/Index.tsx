@@ -30,7 +30,11 @@ const OTP_SLOT_CLASS =
   "otp-slot h-[3.6rem] w-[3.6rem] rounded-md border border-input font-bold bg-white first:rounded-md last:rounded-md";
 
 function waitForBrowserRetint(): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, 150));
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => window.setTimeout(resolve, 100));
+    });
+  });
 }
 
 function hrefAfterLoginFromPendingSearch(): string {
@@ -75,7 +79,7 @@ const Index = () => {
   const [loading, setLoading] = useState(false);
   const [resendCooldownSec, setResendCooldownSec] = useState(0);
   const [sessionReady, setSessionReady] = useState(false);
-  const { toast, dismiss } = useToast();
+  const { toast, clear } = useToast();
   const navigate = useNavigate();
   const { refresh: refreshSession } = useSession();
 
@@ -182,9 +186,9 @@ const Index = () => {
       if (data?.user) {
         persistChatCompatCache({ email: normalizedEmail });
         await refreshSession();
-        dismiss();
+        clear();
         await waitForBrowserRetint();
-        navigate(hrefAfterLoginFromPendingSearch());
+        window.location.assign(hrefAfterLoginFromPendingSearch());
       } else {
         toast({ title: "Ошибка", description: data?.error || "Неверный код", variant: "destructive" });
       }

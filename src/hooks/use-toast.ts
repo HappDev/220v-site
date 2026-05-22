@@ -163,6 +163,10 @@ function toast({ ...props }: Toast) {
   };
 }
 
+function clearToasts() {
+  dispatch({ type: "REMOVE_TOAST" });
+}
+
 function useToast() {
   const [state, setState] = React.useState<State>(memoryState);
 
@@ -180,7 +184,8 @@ function useToast() {
     ...state,
     toast,
     dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
+    clear: clearToasts,
   };
 }
 
-export { useToast, toast };
+export { useToast, toast, clearToasts };
