@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -71,6 +71,12 @@ const Index = () => {
   const [loading, setLoading] = useState(false);
   const [resendCooldownSec, setResendCooldownSec] = useState(0);
   const [sessionReady, setSessionReady] = useState(false);
+  // На мобильных устройствах между тапом и обновлением React-state (disabled
+  // на кнопке) может пройти кадр — этого хватает, чтобы успеть зарегистрировать
+  // двойной клик и улететь второй раз на /auth/send-code. Без guard первый
+  // запрос успешно отправит письмо, второй упрётся в OTP-кулдаун (429) и
+  // покажет пользователю «ошибку», хотя письмо уже пришло.
+  const sendingRef = useRef(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   const { refresh: refreshSession } = useSession();
@@ -116,11 +122,13 @@ const Index = () => {
   };
 
   const handleSendCode = async () => {
+    if (sendingRef.current) return;
     if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       toast({ title: "Ошибка", description: "Укажите корректный email", variant: "destructive" });
       return;
     }
 
+    sendingRef.current = true;
     setLoading(true);
     try {
       const { data, error, retryAfterSec } = await apiPost<{ ok?: boolean; error?: string; retryAfterSec?: number }>(
@@ -153,6 +161,7 @@ const Index = () => {
     } catch (err: unknown) {
       toast({ title: "Ошибка", description: err instanceof Error ? err.message : "Ошибка отправки", variant: "destructive" });
     } finally {
+      sendingRef.current = false;
       setLoading(false);
     }
   };

@@ -32,6 +32,61 @@ function escapeHtml(value) {
 let cachedTransport = null;
 let cachedTransportKey = null;
 
+function evictCachedTransport() {
+  // Закрываем пул нашего нодмэйлер-транспорта. Это важно делать после
+  // транзиентной ошибки SMTP: иначе следующий sendMail снова возьмёт из пула
+  // ту же мёртвую TCP-сессию (AWS SES / NAT закрывают коннект после простоя,
+  // а пул об этом не узнаёт до первой неудачной записи).
+  if (cachedTransport) {
+    try {
+      cachedTransport.close();
+    } catch {
+      // close идемпотентен и не должен ронять отправителя
+    }
+  }
+  cachedTransport = null;
+  cachedTransportKey = null;
+}
+
+function isRetryableSmtpError(err) {
+  if (!err || typeof err !== "object") return false;
+
+  const code = typeof err.code === "string" ? err.code.toUpperCase() : "";
+  const responseCode = Number(err.responseCode) || 0;
+  const message = typeof err.message === "string" ? err.message.toLowerCase() : "";
+
+  // Сетевые/сокетные ошибки — почти всегда означают, что соединение из пула
+  // умерло (RST / idle close на стороне SES) или таймаут на конкретной операции
+  // SMTP. В обоих случаях имеет смысл попробовать ещё раз со свежим сокетом.
+  const transientCodes = new Set([
+    "ECONNECTION",
+    "ECONNRESET",
+    "EPIPE",
+    "ETIMEDOUT",
+    "ESOCKET",
+    "EAI_AGAIN",
+    "EDNS",
+    "ECONNREFUSED",
+    "EHOSTUNREACH",
+    "ENETUNREACH",
+  ]);
+  if (transientCodes.has(code)) return true;
+
+  // SMTP 4xx — временная ошибка со стороны сервера (greylisting, throttling).
+  if (responseCode >= 400 && responseCode < 500) return true;
+
+  if (
+    message.includes("timeout") ||
+    message.includes("timed out") ||
+    message.includes("socket hang up") ||
+    message.includes("connection closed")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function readSmtpConfig() {
   const host = (process.env.SES_SMTP_HOST || "").trim();
   const portRaw = (process.env.SES_SMTP_PORT || "465").trim();
@@ -99,9 +154,11 @@ function buildTransport() {
     "mailer transport created",
   );
   const secure = cfg.port === 465;
-  // Таймауты выбраны так, чтобы суммарно укладываться в proxy_read_timeout
-  // nginx для /api/auth/send-code (25s) с запасом. socketTimeout применяется
-  // к каждой отдельной операции чтения/записи, поэтому держим его умеренным.
+  // Таймауты выбраны так, чтобы две последовательные попытки sendMail
+  // (см. sendOtpEmail) укладывались в proxy_read_timeout nginx для
+  // /api/auth/send-code (25s). Если первая попытка наткнётся на «зомби»-
+  // соединение из пула, мы хотим узнать об этом быстро и успеть переотправить
+  // письмо в том же запросе — поэтому socketTimeout держим тугим.
   cachedTransport = nodemailer.createTransport({
     host: cfg.host,
     port: cfg.port,
@@ -113,7 +170,7 @@ function buildTransport() {
     maxMessages: 50,
     connectionTimeout: 7_000,
     greetingTimeout: 7_000,
-    socketTimeout: 12_000,
+    socketTimeout: 8_000,
     tls: { minVersion: "TLSv1.2" },
   });
   cachedTransportKey = key;
@@ -273,50 +330,95 @@ export async function sendOtpEmail({ email, code }) {
     "mailer sending otp email",
   );
 
-  const startedAtMs = Date.now();
-  try {
-    const info = await transport.sendMail({
-      from: { name: from.name, address: from.email },
-      to: email,
-      subject,
-      text,
-      html,
-      headers: {
-        "X-Entity-Ref-ID": `otp-${Date.now().toString(36)}`,
-        "Auto-Submitted": "auto-generated",
-      },
-    });
-    const elapsedMs = Date.now() - startedAtMs;
-    logger.info(
-      {
-        emailHash: emailHash(email),
-        messageId: info?.messageId || null,
-        elapsedMs,
-      },
-      "mailer otp email sent",
-    );
-    return { ok: true, messageId: info?.messageId || null };
-  } catch (err) {
-    const elapsedMs = Date.now() - startedAtMs;
-    const smtpErr = formatSmtpError(err);
-    logger.error(
-      {
-        emailHash: emailHash(email),
-        maskedEmail: maskEmail(email),
-        recipientDomain,
-        fromEmail: from.email,
-        smtp: smtpErr,
-        elapsedMs,
-      },
-      "mailer smtp send failed",
-    );
-    const errCode = smtpErr.responseCode || smtpErr.code || null;
-    return {
-      ok: false,
-      error: "smtp_error",
-      detail: errCode ? String(errCode) : smtpErr.message || "smtp failure",
-    };
+  const message = {
+    from: { name: from.name, address: from.email },
+    to: email,
+    subject,
+    text,
+    html,
+    headers: {
+      "X-Entity-Ref-ID": `otp-${Date.now().toString(36)}`,
+      "Auto-Submitted": "auto-generated",
+    },
+  };
+
+  // До двух попыток: если соединение из пула «протухло» (AWS SES закрыл idle
+  // TCP, а nodemailer об этом не узнал), первая sendMail быстро упадёт с
+  // ECONNRESET / ETIMEDOUT / socket hang up. Сбрасываем пул и шлём ещё раз
+  // уже на свежем сокете. Без этого пользователь получает 502, хотя письмо
+  // на «мёртвом» сокете до закрытия может всё-таки уйти в SES (отсюда репорт
+  // «ошибка отправки, но письмо пришло»).
+  const MAX_ATTEMPTS = 2;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const startedAtMs = Date.now();
+    try {
+      const info = await transport.sendMail(message);
+      const elapsedMs = Date.now() - startedAtMs;
+      logger.info(
+        {
+          emailHash: emailHash(email),
+          messageId: info?.messageId || null,
+          elapsedMs,
+          attempt,
+        },
+        "mailer otp email sent",
+      );
+      return { ok: true, messageId: info?.messageId || null };
+    } catch (err) {
+      lastError = err;
+      const elapsedMs = Date.now() - startedAtMs;
+      const smtpErr = formatSmtpError(err);
+      const retryable = attempt < MAX_ATTEMPTS && isRetryableSmtpError(err);
+
+      logger.warn(
+        {
+          emailHash: emailHash(email),
+          maskedEmail: maskEmail(email),
+          recipientDomain,
+          fromEmail: from.email,
+          smtp: smtpErr,
+          elapsedMs,
+          attempt,
+          willRetry: retryable,
+        },
+        "mailer smtp send attempt failed",
+      );
+
+      if (!retryable) break;
+
+      evictCachedTransport();
+      try {
+        transport = buildTransport();
+      } catch (rebuildErr) {
+        logger.error(
+          { err: formatSmtpError(rebuildErr), emailHash: emailHash(email) },
+          "mailer transport rebuild failed during retry",
+        );
+        lastError = rebuildErr;
+        break;
+      }
+    }
   }
+
+  const smtpErr = formatSmtpError(lastError);
+  logger.error(
+    {
+      emailHash: emailHash(email),
+      maskedEmail: maskEmail(email),
+      recipientDomain,
+      fromEmail: from.email,
+      smtp: smtpErr,
+    },
+    "mailer smtp send failed",
+  );
+  const errCode = smtpErr.responseCode || smtpErr.code || null;
+  return {
+    ok: false,
+    error: "smtp_error",
+    detail: errCode ? String(errCode) : smtpErr.message || "smtp failure",
+  };
 }
 
 export function getMailerConfigSummary() {
@@ -350,6 +452,5 @@ export async function verifyMailerConfig() {
 }
 
 export function _resetMailerForTests() {
-  cachedTransport = null;
-  cachedTransportKey = null;
+  evictCachedTransport();
 }
