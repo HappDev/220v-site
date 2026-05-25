@@ -204,7 +204,7 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
 
       let profile;
       try {
-        profile = await loadUserProfile(email, req);
+        profile = await loadUserProfile(email, req, parsed.data.ref_uuid);
       } catch (err) {
         const status = isTimeoutError(err) ? timeoutStatusCode(err) : err.status || 502;
         await recordAuthEvent("verify_profile_failed", req, { email, status: "failed" });

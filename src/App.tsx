@@ -15,6 +15,7 @@ import TariffPay from "./pages/TariffPay";
 import Traffic from "./pages/Traffic";
 import TrafficPay from "./pages/TrafficPay";
 import Instructions from "./pages/Instructions";
+import Referrals from "./pages/Referrals";
 import Terms from "./pages/Terms";
 import NotFound from "./pages/NotFound";
 import AdminRedis from "./pages/AdminRedis";
@@ -80,6 +81,14 @@ const App = () => (
             element={
               <RequireVpnAuth>
                 <Instructions />
+              </RequireVpnAuth>
+            }
+          />
+          <Route
+            path="/referrals"
+            element={
+              <RequireVpnAuth>
+                <Referrals />
               </RequireVpnAuth>
             }
           />

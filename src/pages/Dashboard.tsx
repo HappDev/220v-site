@@ -31,15 +31,14 @@ import {
   setVpnSubscriptionUrl,
   setVpnTalkmeProfileJson,
 } from "@/lib/vpnStorage";
-import { isCardPaymentMethod, type BillingPaymentMethod } from "@/lib/paymentMethods";
+import type { BillingPaymentMethod } from "@/lib/paymentMethods";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { CardPaymentEmailDialog } from "@/components/CardPaymentEmailDialog";
 import { oneClickHappUrl, isInstructionsPlatform, type InstructionsPlatform } from "@/lib/happ";
 import LandingShell from "@/pages/landing/LandingShell";
 import LandingFooter from "@/pages/landing/LandingFooter";
 import DashboardSidebar, { type DashboardSidebarItem } from "@/components/DashboardSidebar";
-import { SIDEBAR_SHOW_OTHER } from "@/hooks/useDashboardSidebarItems";
+import { SIDEBAR_SHOW_OTHER, SIDEBAR_SHOW_REFERRALS } from "@/hooks/useDashboardSidebarItems";
 
 interface UserData {
   plan: string;
@@ -191,9 +190,7 @@ const Dashboard = () => {
   const [paymentLoading, setPaymentLoading] = useState<number | null>(null);
   const [trafficBuyOpen, setTrafficBuyOpen] = useState(false);
   const [trafficPaymentStep, setTrafficPaymentStep] = useState<{ gb: number; price: number } | null>(null);
-  const [cardPaymentPending, setCardPaymentPending] = useState<number | null>(null);
   const [otherMenuOpen, setOtherMenuOpen] = useState(false);
-  const [referralOpen, setReferralOpen] = useState(false);
   const [promoOpen, setPromoOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [promoCode, setPromoCode] = useState("");
@@ -386,7 +383,7 @@ const Dashboard = () => {
       return;
     }
     if (sp.get("referral") === "1") {
-      stripAnd(() => setReferralOpen(true));
+      stripAnd(() => navigate("/referrals", { replace: true }));
       return;
     }
     if (sp.get("promo") === "1") {
@@ -485,16 +482,7 @@ const Dashboard = () => {
   };
 
   const handleTrafficPaymentMethodClick = (method: BillingPaymentMethod) => {
-    if (isCardPaymentMethod(method)) {
-      setCardPaymentPending(method.id);
-      return;
-    }
     void handleTrafficPayment(method.id);
-  };
-
-  const handleConfirmCardPayment = () => {
-    if (cardPaymentPending === null) return;
-    void handleTrafficPayment(cardPaymentPending);
   };
 
   const handleLogout = async () => {
@@ -650,6 +638,17 @@ const Dashboard = () => {
       onClick: () => navigate("/chat"),
       match: ["/support", "/chat"],
     },
+    ...(SIDEBAR_SHOW_REFERRALS
+      ? ([
+          {
+            key: "referrals",
+            label: "Реферальная программа",
+            icon: Gift,
+            onClick: () => navigate("/referrals"),
+            match: "/referrals",
+          },
+        ] as DashboardSidebarItem[])
+      : []),
     ...(SIDEBAR_SHOW_OTHER
       ? ([
           {
@@ -1141,14 +1140,6 @@ const Dashboard = () => {
           </div>
         </DialogContent>
       </Dialog>
-      <CardPaymentEmailDialog
-        open={cardPaymentPending !== null}
-        loading={paymentLoading === cardPaymentPending}
-        onOpenChange={(open) => {
-          if (!open && paymentLoading === null) setCardPaymentPending(null);
-        }}
-        onConfirm={handleConfirmCardPayment}
-      />
       {/* Other Menu Modal */}
       <Dialog open={otherMenuOpen} onOpenChange={setOtherMenuOpen}>
         <DialogContent className="dash-modal sm:max-w-sm">
@@ -1157,17 +1148,6 @@ const Dashboard = () => {
             <DialogDescription>Выберите действие</DialogDescription>
           </DialogHeader>
           <div className="dash-modal__stack">
-            <button
-              type="button"
-              className="dash-modal-btn dash-modal-btn--ghost dash-modal-btn--menu"
-              onClick={() => {
-                setOtherMenuOpen(false);
-                setReferralOpen(true);
-              }}
-            >
-              <Gift className="h-5 w-5" />
-              Реферальная программа
-            </button>
             <button
               type="button"
               className="dash-modal-btn dash-modal-btn--ghost dash-modal-btn--menu"
@@ -1209,39 +1189,6 @@ const Dashboard = () => {
               <LogOut className="h-5 w-5" />
               Выход
             </button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Referral Modal */}
-      <Dialog open={referralOpen} onOpenChange={setReferralOpen}>
-        <DialogContent className="dash-modal sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Реферальная программа</DialogTitle>
-            <DialogDescription>Бонусные дни за друга, коллегу, родственника</DialogDescription>
-          </DialogHeader>
-          <div className="dash-modal__stack" style={{ gap: 16 }}>
-            <p>
-              За каждого, кто зарегистрировался по вашей ссылке и оплатил подписку, вы получите{" "}
-              <span style={{ color: "var(--dm-accent)", fontWeight: 800 }}>+7 дней</span> на ваш аккаунт!
-            </p>
-            <div className="dash-modal__panel">
-              <span className="dash-modal__panel-label">Ваша уникальная ссылка</span>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText("Ссылка временно недоступна");
-                  toast.success("Ссылка скопирована!");
-                }}
-                className="dash-modal__copy"
-              >
-                Ссылка временно недоступна
-              </button>
-              <p className="dash-modal__panel-hint">(нажмите, чтобы скопировать)</p>
-            </div>
-            <p className="dash-modal__stats">
-              Сколько зарегистрированных по вашей ссылке: <strong>0</strong>
-            </p>
           </div>
         </DialogContent>
       </Dialog>

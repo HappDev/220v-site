@@ -4,8 +4,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { apiGet, apiPost } from "@/lib/api";
-import { isCardPaymentMethod, type BillingPaymentMethod } from "@/lib/paymentMethods";
-import { CardPaymentEmailDialog } from "@/components/CardPaymentEmailDialog";
+import type { BillingPaymentMethod } from "@/lib/paymentMethods";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import { useDashboardSidebarItems } from "@/hooks/useDashboardSidebarItems";
 import LandingShell from "@/pages/landing/LandingShell";
@@ -51,8 +50,6 @@ const TrafficPay = () => {
   const [billingLoading, setBillingLoading] = useState(true);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [paymentLoading, setPaymentLoading] = useState<number | null>(null);
-  const [cardPaymentPending, setCardPaymentPending] = useState<number | null>(null);
-
   useEffect(() => {
     if (!productKey) {
       navigate("/traffic", { replace: true });
@@ -128,16 +125,7 @@ const TrafficPay = () => {
   };
 
   const handlePaymentMethodClick = (method: BillingPaymentMethod) => {
-    if (isCardPaymentMethod(method)) {
-      setCardPaymentPending(method.id);
-      return;
-    }
     void handlePayment(method.id);
-  };
-
-  const handleConfirmCardPayment = () => {
-    if (cardPaymentPending === null) return;
-    void handlePayment(cardPaymentPending);
   };
 
   const loading = userLoading || billingLoading;
@@ -216,14 +204,6 @@ const TrafficPay = () => {
 
       <LandingFooter />
 
-      <CardPaymentEmailDialog
-        open={cardPaymentPending !== null}
-        loading={paymentLoading === cardPaymentPending}
-        onOpenChange={(open) => {
-          if (!open && paymentLoading === null) setCardPaymentPending(null);
-        }}
-        onConfirm={handleConfirmCardPayment}
-      />
     </LandingShell>
   );
 };

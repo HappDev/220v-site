@@ -4,6 +4,7 @@ import {
   BookOpen,
   CreditCard,
   Gauge,
+  Gift,
   LifeBuoy,
   MoreHorizontal,
   ShoppingCart,
@@ -27,6 +28,7 @@ const PAID_TARIFF_CODES = new Set(["1month", "6month", "12month"]);
 const PAID_PLAN_LABELS = new Set(["1 месяц", "6 месяцев", "12 месяцев"]);
 
 export const SIDEBAR_SHOW_OTHER = false;
+export const SIDEBAR_SHOW_REFERRALS = false;
 
 function resolveIsPremium(user: unknown): boolean {
   if (!user || typeof user !== "object") return false;
@@ -159,6 +161,13 @@ export function useDashboardSidebarItems(): DashboardSidebarData {
         match: ["/support", "/chat"],
       },
       {
+        key: "referrals",
+        label: "Реферальная программа",
+        icon: Gift,
+        onClick: () => navigate("/referrals"),
+        match: "/referrals",
+      },
+      {
         key: "other",
         label: "Другое",
         icon: MoreHorizontal,
@@ -166,7 +175,11 @@ export function useDashboardSidebarItems(): DashboardSidebarData {
       },
     );
 
-    return list.filter((item) => item.key !== "other" || SIDEBAR_SHOW_OTHER);
+    return list.filter(
+      (item) =>
+        (item.key !== "other" || SIDEBAR_SHOW_OTHER) &&
+        (item.key !== "referrals" || SIDEBAR_SHOW_REFERRALS),
+    );
   }, [navigate, userInfo.isPremium]);
 
   return {

@@ -4,6 +4,18 @@ import LandingShell from "@/pages/landing/LandingShell";
 import LandingHeader from "@/pages/landing/LandingHeader";
 import LandingFooter from "@/pages/landing/LandingFooter";
 
+const TariffSelectButton = ({
+  months,
+  className,
+}: {
+  months: number;
+  className: string;
+}) => (
+  <Link to={`/tariff/pay?months=${months}`} className={className}>
+    Выбрать
+  </Link>
+);
+
 const Price = () => (
   <LandingShell>
     <LandingHeader
@@ -42,9 +54,7 @@ const Price = () => (
                 <li>Безлимитный трафик*</li>
                 <li>Поддержка 24/7</li>
               </ul>
-              <a href="https://t.me/vpn220v_bot" className="btn btn--ghost btn--wide plan__btn">
-                Выбрать
-              </a>
+              <TariffSelectButton months={1} className="btn btn--ghost btn--wide plan__btn" />
             </div>
 
             <div className="plan plan--featured">
@@ -63,9 +73,7 @@ const Price = () => (
                 <li>Поддержка 24/7</li>
                 <li>Экономия 15%</li>
               </ul>
-              <a href="https://t.me/vpn220v_bot" className="btn btn--primary btn--wide plan__btn">
-                Выбрать
-              </a>
+              <TariffSelectButton months={6} className="btn btn--primary btn--wide plan__btn" />
             </div>
 
             <div className="plan">
@@ -84,9 +92,7 @@ const Price = () => (
                 <li>Приоритетная поддержка</li>
                 <li>Максимальная выгода — 30%</li>
               </ul>
-              <a href="https://t.me/vpn220v_bot" className="btn btn--ghost btn--wide plan__btn">
-                Выбрать
-              </a>
+              <TariffSelectButton months={12} className="btn btn--ghost btn--wide plan__btn" />
             </div>
           </div>
 

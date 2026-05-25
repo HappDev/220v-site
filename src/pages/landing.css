@@ -3309,24 +3309,47 @@ body.landing-no-scroll { overflow: hidden; }
   border-color: rgba(198, 255, 61, 0.22);
   background: rgba(198, 255, 61, 0.04);
 }
+.dash-modal .dash-modal__item--button {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dash-modal .dash-modal__item--button:focus-visible {
+  outline: 2px solid var(--dm-accent);
+  outline-offset: 2px;
+}
 .dash-modal .dash-modal__item-meta {
   min-width: 0;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .dash-modal .dash-modal__item-title {
+  display: block;
   font-size: 13px;
   font-weight: 700;
   color: var(--dm-text);
   word-break: break-all;
 }
 .dash-modal .dash-modal__item-sub {
-  margin-top: 4px;
+  display: block;
+  margin-top: 0;
   font-size: 12px;
   color: var(--dm-muted);
   line-height: 1.45;
 }
 .dash-modal .dash-modal__item-sub + .dash-modal__item-sub {
   margin-top: 2px;
+}
+.dash-modal .dash-modal__item-price {
+  flex-shrink: 0;
+  color: var(--dm-accent);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 .dash-modal .dash-modal__item-remove {
   flex-shrink: 0;
@@ -3374,12 +3397,19 @@ body.landing-no-scroll { overflow: hidden; }
   background: rgba(198, 255, 61, 0.06);
   box-shadow: 0 0 0 3px rgba(198, 255, 61, 0.12);
 }
+.dash-modal .dash-modal__textarea {
+  min-height: 112px;
+  height: auto;
+  padding: 12px 14px;
+  resize: vertical;
+  line-height: 1.45;
+}
 
 /* Link-like copy block (Referral) */
 .dash-modal .dash-modal__copy {
   display: block;
   width: 100%;
-  text-align: left;
+  text-align: center;
   padding: 14px 16px;
   border-radius: 14px;
   background: rgba(198, 255, 61, 0.08);
@@ -3387,7 +3417,6 @@ body.landing-no-scroll { overflow: hidden; }
   color: var(--dm-accent);
   font-size: 14px;
   font-weight: 700;
-  word-break: break-all;
   cursor: pointer;
   font-family: inherit;
   transition: background 0.2s ease, border-color 0.2s ease;
@@ -3395,6 +3424,259 @@ body.landing-no-scroll { overflow: hidden; }
 .dash-modal .dash-modal__copy:hover {
   background: rgba(198, 255, 61, 0.16);
   border-color: rgba(198, 255, 61, 0.45);
+}
+
+.dash-card .dash-modal__copy {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(198, 255, 61, 0.08);
+  border: 1px solid rgba(198, 255, 61, 0.25);
+  color: var(--dm-accent);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.dash-card .dash-modal__copy:hover:not(:disabled) {
+  background: rgba(198, 255, 61, 0.16);
+  border-color: rgba(198, 255, 61, 0.45);
+}
+.dash-card .dash-modal__copy:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dash-referrals-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 16px;
+}
+.dash-referrals-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.dash-referrals-table th,
+.dash-referrals-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.dash-referrals-table th {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.dash-referrals-table__amount--plus {
+  color: var(--dm-accent);
+  font-weight: 700;
+}
+.dash-referrals-table__amount--minus {
+  color: #f87171;
+  font-weight: 700;
+}
+.dash-referrals-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 8px;
+}
+.dash-referrals-pagination__info {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.dash-referrals-more-link {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  color: var(--dm-accent);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.dash-referrals-more-link:hover {
+  opacity: 0.85;
+}
+
+/* ---------- Referrals page: 3-step flow ---------- */
+.landing-root .dash-referrals-flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: 14px;
+  margin: 24px 0;
+}
+.landing-root .dash-referrals-flow__step {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 26px 24px 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at top right, rgba(198, 255, 61, 0.10), transparent 55%),
+    linear-gradient(180deg, rgba(26, 26, 26, 0.96), rgba(18, 18, 18, 0.96));
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+  transition: border-color .2s ease, transform .15s ease, box-shadow .2s ease;
+}
+.landing-root .dash-referrals-flow__step:hover {
+  border-color: rgba(198, 255, 61, 0.32);
+  transform: translateY(-2px);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.45);
+}
+.landing-root .dash-referrals-flow__num {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  color: rgba(198, 255, 61, 0.55);
+  font-feature-settings: "tnum" 1;
+}
+.landing-root .dash-referrals-flow__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: rgba(198, 255, 61, 0.1);
+  border: 1px solid rgba(198, 255, 61, 0.28);
+  color: var(--accent);
+}
+.landing-root .dash-referrals-flow__title {
+  margin: 2px 0 0;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  line-height: 1.2;
+  color: var(--text);
+}
+.landing-root .dash-referrals-flow__desc {
+  margin: 0;
+  color: var(--muted-2);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.landing-root .dash-referrals-flow__arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  color: rgba(198, 255, 61, 0.55);
+  flex-shrink: 0;
+}
+
+/* ---------- Referrals page: rewards list inside spend card ---------- */
+.landing-root .dash-referrals-rewards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.landing-root .dash-referrals-rewards--single {
+  grid-template-columns: 1fr;
+}
+.landing-root .dash-referrals-rewards__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(198, 255, 61, 0.25);
+  background: rgba(198, 255, 61, 0.08);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+}
+.landing-root .dash-referrals-rewards__btn:hover:not(:disabled) {
+  background: rgba(198, 255, 61, 0.16);
+  border-color: rgba(198, 255, 61, 0.45);
+  transform: translateY(-1px);
+}
+.landing-root .dash-referrals-rewards__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.landing-root .dash-referrals-rewards__hint {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
+}
+
+/* History section gets full width when sitting under the 3-col grid. */
+.landing-root .dash-referrals-history {
+  margin-top: 16px;
+}
+
+.landing-root .dash-referrals-start {
+  display: flex;
+  justify-content: center;
+  margin: 8px 0 32px;
+}
+
+.landing-root .dash-referrals-start .dash-hero__cta {
+  min-width: 240px;
+  padding-inline: 32px;
+}
+
+.landing-root .dash-referrals-details-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  margin-top: 8px;
+  color: var(--accent);
+}
+
+.landing-root .dash-referrals-details-error {
+  margin-top: 8px;
+}
+
+@media (max-width: 1100px) {
+  .landing-root .dash-referrals-flow {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .landing-root .dash-referrals-flow__arrow {
+    width: auto;
+    height: 28px;
+    transform: rotate(90deg);
+    justify-self: center;
+  }
+}
+
+@media (max-width: 720px) {
+  .landing-root .dash-referrals-flow__step {
+    padding: 22px 20px;
+  }
+  .landing-root .dash-referrals-flow__icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+  }
+  .landing-root .dash-referrals-flow__title {
+    font-size: 17px;
+  }
 }
 
 .dash-modal .dash-modal__panel {
@@ -3432,11 +3714,19 @@ body.landing-no-scroll { overflow: hidden; }
 .dash-modal .dash-modal__section {
   margin-top: 18px;
 }
+.dash-modal form.dash-modal__section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 .dash-modal .dash-modal__section-title {
   font-size: 15px;
   font-weight: 800;
   color: var(--dm-text);
   margin-bottom: 10px;
+}
+.dash-modal form .dash-modal__section-title {
+  margin-bottom: 0;
 }
 .dash-modal .dash-modal__list {
   margin: 0;
@@ -3477,6 +3767,13 @@ body.landing-no-scroll { overflow: hidden; }
   text-align: center;
   color: var(--dm-muted);
   font-size: 14px;
+}
+
+.dash-modal .dash-modal__error {
+  margin-top: 12px;
+  color: #ff9a9a;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .dash-modal .dash-modal__loader {

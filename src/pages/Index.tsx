@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPost } from "@/lib/api";
 import { formatResendCooldownButtonLabel } from "@/lib/errorMessages";
 import { useSession } from "@/hooks/useSession";
-import { consumeVpnPendingRedirect, persistChatCompatCache } from "@/lib/vpnStorage";
+import {
+  consumeVpnPendingRedirect,
+  peekVpnPendingRedirect,
+  persistChatCompatCache,
+  setPendingRefUuid,
+  consumePendingRefUuid,
+  setVpnPendingRedirect,
+} from "@/lib/vpnStorage";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 
 import LandingShell from "@/pages/landing/LandingShell";
@@ -79,9 +86,24 @@ const Index = () => {
   const sendingRef = useRef(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const { refresh: refreshSession } = useSession();
 
   const normalizedEmail = email.trim().toLowerCase();
+
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const ref = sp.get("ref");
+    if (ref) {
+      setPendingRefUuid(ref);
+      sp.delete("ref");
+      const nextSearch = sp.toString();
+      navigate(
+        { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" },
+        { replace: true },
+      );
+    }
+  }, [location.pathname, location.search, navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,6 +122,13 @@ const Index = () => {
   }, [navigate]);
 
   useEffect(() => {
+    if (!sessionReady) return;
+    if (peekVpnPendingRedirect()) {
+      openLogin();
+    }
+  }, [sessionReady]);
+
+  useEffect(() => {
     if (resendCooldownSec <= 0) return;
     const timer = window.setTimeout(() => {
       setResendCooldownSec((prev) => Math.max(0, prev - 1));
@@ -112,6 +141,12 @@ const Index = () => {
     setCode("");
     setResendCooldownSec(0);
     setLoginOpen(true);
+  };
+
+  const handleSelectTariff = (months: number) => {
+    setVpnPendingRedirect(`/tariff/pay?months=${months}`);
+    setPricingOpen(false);
+    openLogin();
   };
 
   const closeLogin = () => {
@@ -178,10 +213,16 @@ const Index = () => {
 
     setLoading(true);
     try {
-      const { data, error } = await apiPost<{ user?: unknown; error?: string }>("/auth/verify", {
+      const refUuid = consumePendingRefUuid();
+      const verifyBody: { email: string; code: string; ref_uuid?: string } = {
         email: normalizedEmail,
         code,
-      });
+      };
+      if (refUuid) {
+        verifyBody.ref_uuid = refUuid;
+      }
+
+      const { data, error } = await apiPost<{ user?: unknown; error?: string }>("/auth/verify", verifyBody);
 
       if (error) throw error;
 
@@ -397,9 +438,13 @@ const Index = () => {
               <li>Безлимитный трафик*</li>
               <li>Поддержка 24/7</li>
             </ul>
-            <a href="https://t.me/vpn220v_bot" className="btn btn--ghost btn--wide plan__btn">
+            <button
+              type="button"
+              className="btn btn--ghost btn--wide plan__btn"
+              onClick={() => handleSelectTariff(1)}
+            >
               Выбрать
-            </a>
+            </button>
           </div>
 
           <div className="plan plan--featured">
@@ -418,9 +463,13 @@ const Index = () => {
               <li>Поддержка 24/7</li>
               <li>Экономия 15%</li>
             </ul>
-            <a href="https://t.me/vpn220v_bot" className="btn btn--primary btn--wide plan__btn">
+            <button
+              type="button"
+              className="btn btn--primary btn--wide plan__btn"
+              onClick={() => handleSelectTariff(6)}
+            >
               Выбрать
-            </a>
+            </button>
           </div>
 
           <div className="plan">
@@ -439,9 +488,13 @@ const Index = () => {
               <li>Приоритетная поддержка</li>
               <li>Максимальная выгода — 30%</li>
             </ul>
-            <a href="https://t.me/vpn220v_bot" className="btn btn--ghost btn--wide plan__btn">
+            <button
+              type="button"
+              className="btn btn--ghost btn--wide plan__btn"
+              onClick={() => handleSelectTariff(12)}
+            >
               Выбрать
-            </a>
+            </button>
           </div>
         </div>
 

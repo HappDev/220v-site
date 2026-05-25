@@ -472,7 +472,7 @@ async function fetchRmwAnnouncementText() {
   return null;
 }
 
-async function loadUserProfileForEmail(normalizedEmail, req) {
+async function loadUserProfileForEmail(normalizedEmail, req, refUuid) {
   const rmwUrl = rmwBaseUrl();
   const rmwKey = rmwApiKey();
   if (!rmwUrl || !rmwKey) {
@@ -488,13 +488,18 @@ async function loadUserProfileForEmail(normalizedEmail, req) {
       }
     : null;
 
+  const sessionBody = { email: normalizedEmail };
+  if (refUuid && typeof refUuid === "string" && UUID_RE.test(refUuid.trim())) {
+    sessionBody.ref_uuid = refUuid.trim();
+  }
+
   const sessionRes = await fetchWithTimeout(`${rmwUrl}/v1/auth/session`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Api-Key": rmwKey,
     },
-    body: JSON.stringify({ email: normalizedEmail }),
+    body: JSON.stringify(sessionBody),
   });
 
   const sessionText = await sessionRes.text();
@@ -594,6 +599,60 @@ app.get("/api/me", requireSession, async (req, res) => {
       status,
       publicMessageFromErr(err, "Не удалось загрузить профиль", { context: "профиль" }),
     );
+  }
+});
+
+app.get("/api/me/referrals/points", requireSession, async (req, res) => {
+  try {
+    const userUuid = assertValidUuid(req.session.userUuid);
+
+    const pageRaw = Number(req.query.page);
+    const limitRaw = Number(req.query.limit);
+    const page = Number.isInteger(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+    const limit =
+      Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(100, limitRaw) : 20;
+
+    const rmwUrl = rmwBaseUrl();
+    const rmwKey = rmwApiKey();
+    if (!rmwUrl || !rmwKey) {
+      return clientError(res, 500, "Сервис рефералов временно недоступен");
+    }
+
+    const qs = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+    });
+    const r = await fetchWithTimeout(
+      `${rmwUrl}/v1/users/${encodeURIComponent(userUuid)}/referral-points?${qs}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Api-Key": rmwKey,
+        },
+      },
+    );
+
+    const text = await r.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      return clientError(res, 502, "Не удалось загрузить историю рефералов");
+    }
+
+    if (!r.ok) {
+      req.log.warn({ status: r.status }, "RMW referral-points failed");
+      return clientError(
+        res,
+        r.status >= 400 && r.status < 600 ? r.status : 502,
+        "Не удалось загрузить историю рефералов",
+      );
+    }
+
+    return res.json(data);
+  } catch (err) {
+    return serverError(res, req, err);
   }
 });
 

@@ -8,7 +8,15 @@ const KEYS = {
 
 /** Ключ sessionStorage для отложенного редиректа после логина из RequireVpnAuth. */
 const PENDING_REDIRECT_KEY = "vpn_pending_redirect";
+const PENDING_REF_UUID_KEY = "vpn_pending_ref_uuid";
 const PENDING_REDIRECT_MAX_LEN = 1024;
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isValidRefUuid(value: string): boolean {
+  return UUID_RE.test(value.trim());
+}
 
 export const VPN_STORAGE_KEY_PREFIX = "vpn_";
 
@@ -101,11 +109,42 @@ export function setVpnPendingRedirect(path: string): void {
   }
 }
 
+export function peekVpnPendingRedirect(): string {
+  try {
+    const raw = sessionStorage.getItem(PENDING_REDIRECT_KEY);
+    if (raw && isSafeInternalPath(raw)) return raw;
+  } catch {
+    // ignore
+  }
+  return "";
+}
+
 export function consumeVpnPendingRedirect(): string {
   try {
     const raw = sessionStorage.getItem(PENDING_REDIRECT_KEY);
     sessionStorage.removeItem(PENDING_REDIRECT_KEY);
     if (raw && isSafeInternalPath(raw)) return raw;
+  } catch {
+    // ignore
+  }
+  return "";
+}
+
+export function setPendingRefUuid(uuid: string): void {
+  const trimmed = typeof uuid === "string" ? uuid.trim() : "";
+  if (!trimmed || !isValidRefUuid(trimmed)) return;
+  try {
+    sessionStorage.setItem(PENDING_REF_UUID_KEY, trimmed);
+  } catch {
+    // ignore
+  }
+}
+
+export function consumePendingRefUuid(): string {
+  try {
+    const raw = sessionStorage.getItem(PENDING_REF_UUID_KEY);
+    sessionStorage.removeItem(PENDING_REF_UUID_KEY);
+    if (raw && isValidRefUuid(raw)) return raw.trim();
   } catch {
     // ignore
   }
