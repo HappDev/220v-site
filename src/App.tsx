@@ -19,6 +19,7 @@ import Referrals from "./pages/Referrals";
 import Terms from "./pages/Terms";
 import NotFound from "./pages/NotFound";
 import AdminRedis from "./pages/AdminRedis";
+import AdminReferrals from "./pages/AdminReferrals";
 import RequireVpnAuth from "./components/RequireVpnAuth";
 import { SessionProvider } from "./hooks/useSession";
 
@@ -42,6 +43,7 @@ const App = () => (
             }
           />
           <Route path="/admin/redis" element={<AdminRedis />} />
+          <Route path="/admin/referrals" element={<AdminReferrals />} />
           <Route path="/policy" element={<Policy />} />
           <Route path="/price" element={<Price />} />
           <Route

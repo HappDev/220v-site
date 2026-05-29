@@ -13,6 +13,7 @@ import { fetchWithTimeout } from "./http/fetchWithTimeout.mjs";
 import { isTimeoutError, publicMessageFromErr, timeoutStatusCode } from "./http/userMessages.mjs";
 import { checkoutSessionLimiter, refClickIpLimiter } from "./http/rateLimit.mjs";
 import { recordReferralEvent, queryReferralEvents } from "./referrals/events.mjs";
+import { buildReferralSummary } from "./referrals/summary.mjs";
 import { SESSION_COOKIE } from "./config.mjs";
 import { base64url } from "./auth/crypto.mjs";
 import { createAuthRouter } from "./auth/routes.mjs";
@@ -665,6 +666,30 @@ app.get("/api/admin/referrals/events", requireAdminToken, async (req, res) => {
         topReferrers: sortDesc(referrerCounts),
       }
     });
+  } catch (err) {
+    return serverError(res, req, err);
+  }
+});
+
+app.get("/api/admin/referrals/summary", requireAdminToken, async (req, res) => {
+  try {
+    const rawDays = String(req.query.days || "30").trim().toLowerCase();
+    const days = rawDays === "all" ? null : Number(rawDays);
+    if (days !== null && (!Number.isInteger(days) || days <= 0)) {
+      return clientError(res, 400, "Некорректный период");
+    }
+
+    const rawLimit = Number(req.query.limit);
+    const limit =
+      Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(20000, rawLimit) : 5000;
+
+    const filters = { limit };
+    if (days !== null) {
+      filters.since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    }
+
+    const events = await queryReferralEvents(filters);
+    return res.json(buildReferralSummary(events, { days, recentEventLimit: Math.min(200, limit) }));
   } catch (err) {
     return serverError(res, req, err);
   }

@@ -1,8 +1,9 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Database, Loader2, RefreshCw, ShieldAlert } from "lucide-react";
+import { Activity, Database } from "lucide-react";
 import { apiBase } from "@/lib/api";
 import { formatUserError } from "@/lib/errorMessages";
-import { Button } from "@/components/ui/button";
+import { ADMIN_TOKEN_STORAGE_KEY } from "@/lib/admin";
+import AdminPageShell from "@/components/AdminPageShell";
 
 type CounterEntry = { key: string; count: number };
 
@@ -74,7 +75,6 @@ type RedisAuthSnapshot = {
   events: AuthEvent[];
 };
 
-const TOKEN_STORAGE_KEY = "v220_admin_redis_token";
 const AUTO_OPEN_ITEM_LIMIT = 5;
 
 function formatDate(value?: string | null) {
@@ -101,7 +101,7 @@ function asErrorMessage(error: unknown) {
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-xl bg-card p-4 ring-1 ring-border">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-xs uppercase text-muted-foreground">{label}</p>
       <p className="mt-2 text-2xl font-bold text-foreground">{value}</p>
     </div>
   );
@@ -256,7 +256,7 @@ function EventList({ items }: { items: AuthEvent[] }) {
 }
 
 export default function AdminRedis() {
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) || "");
+  const [token, setToken] = useState(() => localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "");
   const [snapshot, setSnapshot] = useState<RedisAuthSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -294,7 +294,7 @@ export default function AdminRedis() {
         throw new Error(message);
       }
       setSnapshot(body as RedisAuthSnapshot);
-      localStorage.setItem(TOKEN_STORAGE_KEY, trimmedToken);
+      localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, trimmedToken);
     } catch (err) {
       setError(asErrorMessage(err));
     } finally {
@@ -309,54 +309,19 @@ export default function AdminRedis() {
   }, [load, token]);
 
   return (
-    <div className="min-h-[100svh] min-h-[100dvh] bg-background p-4 text-foreground sm:p-6">
-      <div className="mx-auto flex max-w-7xl flex-col gap-5">
-        <header className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-border">
-          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-            <div>
-              <div className="mb-2 flex items-center gap-2 text-primary">
-                <Database className="h-5 w-5" />
-                <span className="text-sm font-bold uppercase tracking-wide">Redis Auth Monitor</span>
-              </div>
-              <h1 className="text-2xl font-extrabold md:text-3xl">Данные авторизации из Redis</h1>
-              <p className="mt-2 text-sm text-muted-foreground">
-                OTP, cooldown, сессии, rate-limit ключи, IP и последние попытки входа.
-              </p>
-            </div>
-            <Button onClick={load} disabled={loading} className="gap-2">
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              Обновить
-            </Button>
-          </div>
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-            <input
-              type="password"
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              placeholder="ADMIN_REDIS_TOKEN"
-              autoComplete="current-password"
-              enterKeyHint="go"
-              className="h-10 flex-1 rounded-lg border border-border bg-background px-3 text-base outline-none focus:ring-2 focus:ring-ring md:text-sm"
-            />
-            <Button variant="outline" onClick={() => {
-              localStorage.removeItem(TOKEN_STORAGE_KEY);
-              setToken("");
-              setSnapshot(null);
-            }}>
-              Сбросить токен
-            </Button>
-          </div>
-          {error && (
-            <div className="mt-4 flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-              <ShieldAlert className="h-4 w-4" />
-              {error}
-            </div>
-          )}
-          {snapshot && (
-            <p className="mt-3 text-xs text-muted-foreground">Обновлено: {formatDate(snapshot.generatedAt)}</p>
-          )}
-        </header>
-
+    <AdminPageShell
+      eyebrow="Redis Auth Monitor"
+      title="Данные авторизации из Redis"
+      description="OTP, cooldown, сессии, rate-limit ключи, IP и последние попытки входа."
+      icon={Database}
+      token={token}
+      onTokenChange={setToken}
+      onReset={() => setSnapshot(null)}
+      onRefresh={load}
+      loading={loading}
+      error={error}
+      updatedAt={snapshot?.generatedAt}
+    >
         {snapshot && (
           <>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -395,7 +360,6 @@ export default function AdminRedis() {
             </div>
           </>
         )}
-      </div>
-    </div>
+    </AdminPageShell>
   );
 }
