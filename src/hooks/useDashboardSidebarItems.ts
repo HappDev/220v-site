@@ -26,7 +26,7 @@ type SidebarUser = {
 };
 
 export const SIDEBAR_SHOW_OTHER = false;
-export const SIDEBAR_SHOW_REFERRALS = false;
+export const SIDEBAR_SHOW_REFERRALS = true;
 
 function readCachedIsPremium(): boolean {
   try {
