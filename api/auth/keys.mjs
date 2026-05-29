@@ -10,6 +10,7 @@ export const refEventsIpIndexKey = (ipHash) => `${PREFIX}ref:events:by_ip:${ipHa
 export const refEventsUaIndexKey = (uaHash) => `${PREFIX}ref:events:by_ua:${uaHash}`;
 export const refEventsFingerprintIndexKey = (fingerprintHash) => `${PREFIX}ref:events:by_fingerprint:${fingerprintHash}`;
 export const refStatsReferrerKey = (refUuid) => `${PREFIX}ref:stats:referrer:${refUuid}`;
+export const refClickSeenKey = (refUuid, ipHash) => `${PREFIX}ref:clickseen:${refUuid}:${ipHash}`;
 
 export const SCAN_PATTERNS = {
   otp: `${PREFIX}otp:*`,
@@ -28,6 +29,7 @@ export const SCAN_PATTERNS = {
   refEventsByUa: `${PREFIX}ref:events:by_ua:*`,
   refEventsByFingerprint: `${PREFIX}ref:events:by_fingerprint:*`,
   refStatsReferrer: `${PREFIX}ref:stats:referrer:*`,
+  refClickSeen: `${PREFIX}ref:clickseen:*`,
   rlRefClickIp: `${PREFIX}rl:refclick:ip:*`,
 };
 

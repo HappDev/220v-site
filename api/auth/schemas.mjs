@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EMAIL_RE, UUID_RE } from "../config.mjs";
+import { EMAIL_RE, REF_UUID_RE } from "../config.mjs";
 
 export const emailSchema = z
   .string()
@@ -13,7 +13,7 @@ export const sendCodeSchema = z.object({
   ref_uuid: z
     .string()
     .trim()
-    .regex(UUID_RE, "Invalid ref_uuid")
+    .regex(REF_UUID_RE, "Invalid ref_uuid")
     .optional(),
 });
 
@@ -23,6 +23,6 @@ export const verifySchema = z.object({
   ref_uuid: z
     .string()
     .trim()
-    .regex(UUID_RE, "Invalid ref_uuid")
+    .regex(REF_UUID_RE, "Invalid ref_uuid")
     .optional(),
 });

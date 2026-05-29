@@ -10,12 +10,54 @@ const KEYS = {
 const PENDING_REDIRECT_KEY = "vpn_pending_redirect";
 const PENDING_REF_UUID_KEY = "vpn_pending_ref_uuid";
 const PENDING_REDIRECT_MAX_LEN = 1024;
+const PENDING_REF_UUID_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+type PendingRefUuidRecord = {
+  uuid: string;
+  ts: number;
+};
+
+const REF_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function isValidRefUuid(value: string): boolean {
-  return UUID_RE.test(value.trim());
+  return REF_UUID_RE.test(value.trim());
+}
+
+function readPendingRefUuidRecord(): PendingRefUuidRecord | null {
+  try {
+    const raw = localStorage.getItem(PENDING_REF_UUID_KEY);
+    if (!raw) {
+      const legacyRaw = sessionStorage.getItem(PENDING_REF_UUID_KEY);
+      const legacyUuid = legacyRaw && isValidRefUuid(legacyRaw) ? legacyRaw.trim() : "";
+      if (!legacyUuid) return null;
+
+      const record = { uuid: legacyUuid, ts: Date.now() };
+      localStorage.setItem(PENDING_REF_UUID_KEY, JSON.stringify(record));
+      sessionStorage.removeItem(PENDING_REF_UUID_KEY);
+      return record;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<PendingRefUuidRecord> | null;
+    const uuid = typeof parsed?.uuid === "string" ? parsed.uuid.trim() : "";
+    const ts = typeof parsed?.ts === "number" ? parsed.ts : 0;
+    if (!uuid || !isValidRefUuid(uuid) || !Number.isFinite(ts)) {
+      localStorage.removeItem(PENDING_REF_UUID_KEY);
+      return null;
+    }
+    if (Date.now() - ts > PENDING_REF_UUID_TTL_MS) {
+      localStorage.removeItem(PENDING_REF_UUID_KEY);
+      return null;
+    }
+    return { uuid, ts };
+  } catch {
+    try {
+      localStorage.removeItem(PENDING_REF_UUID_KEY);
+    } catch {
+      // ignore
+    }
+    return null;
+  }
 }
 
 export const VPN_STORAGE_KEY_PREFIX = "vpn_";
@@ -134,7 +176,7 @@ export function setPendingRefUuid(uuid: string): void {
   const trimmed = typeof uuid === "string" ? uuid.trim() : "";
   if (!trimmed || !isValidRefUuid(trimmed)) return;
   try {
-    sessionStorage.setItem(PENDING_REF_UUID_KEY, trimmed);
+    localStorage.setItem(PENDING_REF_UUID_KEY, JSON.stringify({ uuid: trimmed, ts: Date.now() }));
   } catch {
     // ignore
   }
@@ -142,9 +184,10 @@ export function setPendingRefUuid(uuid: string): void {
 
 export function consumePendingRefUuid(): string {
   try {
-    const raw = sessionStorage.getItem(PENDING_REF_UUID_KEY);
+    const record = readPendingRefUuidRecord();
+    localStorage.removeItem(PENDING_REF_UUID_KEY);
     sessionStorage.removeItem(PENDING_REF_UUID_KEY);
-    if (raw && isValidRefUuid(raw)) return raw.trim();
+    if (record) return record.uuid;
   } catch {
     // ignore
   }
@@ -152,11 +195,5 @@ export function consumePendingRefUuid(): string {
 }
 
 export function peekPendingRefUuid(): string {
-  try {
-    const raw = sessionStorage.getItem(PENDING_REF_UUID_KEY);
-    if (raw && isValidRefUuid(raw)) return raw.trim();
-  } catch {
-    // ignore
-  }
-  return "";
+  return readPendingRefUuidRecord()?.uuid ?? "";
 }

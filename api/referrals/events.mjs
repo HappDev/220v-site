@@ -12,8 +12,11 @@ import {
   refEventsIpIndexKey,
   refEventsUaIndexKey,
   refEventsFingerprintIndexKey,
-  refStatsReferrerKey
+  refStatsReferrerKey,
+  refClickSeenKey
 } from "../auth/keys.mjs";
+
+const REF_CLICK_DEDUP_TTL_SEC = 60 * 60;
 
 export function ipUaHash(value) {
   if (!value) return "";
@@ -48,11 +51,8 @@ export async function recordReferralEvent(type, req, fields = {}) {
       referrerUuid: fields.referrerUuid || "",
       referredEmailHash: fields.referredEmailHash || undefined,
       referredUuidPrefix: fields.referredUuidPrefix || undefined,
-      ip,
       ipHash,
-      userAgent,
       uaHash,
-      fingerprint,
       fingerprintHash,
       otherUserUuidPrefix: fields.otherUserUuidPrefix || undefined,
       selfReferral: Boolean(fields.selfReferral),
@@ -65,6 +65,17 @@ export async function recordReferralEvent(type, req, fields = {}) {
     const eventJson = JSON.stringify(event);
     const listKey = refEventsListKey();
     const multi = redis.multi();
+    let shouldIncrementClick = true;
+    if (type === "ref_click" && event.referrerUuid && ipHash) {
+      const seenResult = await redis.set(
+        refClickSeenKey(event.referrerUuid, ipHash),
+        "1",
+        "EX",
+        REF_CLICK_DEDUP_TTL_SEC,
+        "NX",
+      );
+      shouldIncrementClick = seenResult === "OK";
+    }
 
     // 1. LPUSH into general list
     multi.lpush(listKey, eventJson);
@@ -79,7 +90,7 @@ export async function recordReferralEvent(type, req, fields = {}) {
       
       // Increment aggregate stats
       const statsKey = refStatsReferrerKey(event.referrerUuid);
-      if (type === "ref_click") multi.hincrby(statsKey, "clicks", 1);
+      if (type === "ref_click" && shouldIncrementClick) multi.hincrby(statsKey, "clicks", 1);
       else if (type === "ref_send_code") multi.hincrby(statsKey, "codes", 1);
       else if (type === "ref_verify_ok") multi.hincrby(statsKey, "verifies", 1);
       else if (type === "ref_checkout_by_referred") multi.hincrby(statsKey, "checkouts", 1);

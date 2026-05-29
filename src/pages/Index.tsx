@@ -70,9 +70,14 @@ async function getBrowserFingerprint(): Promise<string> {
   try {
     const rawString = [
       navigator.userAgent || "",
+      navigator.platform || "",
       screen.width || "",
       screen.height || "",
+      screen.colorDepth || "",
+      window.devicePixelRatio || "",
       navigator.language || "",
+      navigator.hardwareConcurrency || "",
+      (navigator as Navigator & { deviceMemory?: number }).deviceMemory || "",
       Intl.DateTimeFormat().resolvedOptions().timeZone || "",
     ].join("|");
     const msgBuffer = new TextEncoder().encode(rawString);
@@ -244,7 +249,7 @@ const Index = () => {
 
     setLoading(true);
     try {
-      const refUuid = consumePendingRefUuid();
+      const refUuid = peekPendingRefUuid();
       const verifyBody: { email: string; code: string; ref_uuid?: string } = {
         email: normalizedEmail,
         code,
@@ -258,6 +263,9 @@ const Index = () => {
       if (error) throw error;
 
       if (data?.user) {
+        if (refUuid) {
+          consumePendingRefUuid();
+        }
         persistChatCompatCache({ email: normalizedEmail });
         await refreshSession();
         navigate(hrefAfterLoginFromPendingSearch());

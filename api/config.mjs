@@ -23,6 +23,8 @@ export const AUTH_STATS_TTL_SEC = 30 * 24 * 60 * 60;
 
 export const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const REF_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const HWID_RE = /^[a-zA-Z0-9._-]{1,128}$/;
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -53,4 +55,11 @@ export const REF_EVENT_TTL_SEC =
     ? Number(process.env.REF_EVENT_TTL_SEC)
     : 31536000; // 365 days
 
-export const IP_HASH_SECRET = process.env.IP_HASH_SECRET || "default_ref_secret";
+const configuredIpHashSecret = process.env.IP_HASH_SECRET?.trim();
+if (isProd && !configuredIpHashSecret) {
+  throw new Error("IP_HASH_SECRET is required in production");
+}
+if (!isProd && process.env.NODE_ENV === "development" && !configuredIpHashSecret) {
+  console.warn("IP_HASH_SECRET is not set; using development-only fallback");
+}
+export const IP_HASH_SECRET = configuredIpHashSecret || "default_ref_secret";

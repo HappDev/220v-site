@@ -5,7 +5,7 @@ import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import { z } from "zod";
 
-import { isProd, UUID_RE, HWID_RE } from "./config.mjs";
+import { isProd, UUID_RE, REF_UUID_RE, HWID_RE } from "./config.mjs";
 import { logger } from "./logger.mjs";
 import { redis } from "./redis.mjs";
 import { clientError, serverError } from "./http/errors.mjs";
@@ -492,7 +492,7 @@ async function loadUserProfileForEmail(normalizedEmail, req, refUuid) {
     : null;
 
   const sessionBody = { email: normalizedEmail };
-  if (refUuid && typeof refUuid === "string" && UUID_RE.test(refUuid.trim())) {
+  if (refUuid && typeof refUuid === "string" && REF_UUID_RE.test(refUuid.trim())) {
     sessionBody.ref_uuid = refUuid.trim();
   }
 
@@ -565,7 +565,7 @@ app.use(
 app.post("/api/ref/click", refClickIpLimiter, async (req, res) => {
   try {
     const { ref_uuid, fingerprint } = req.body || {};
-    if (!ref_uuid || typeof ref_uuid !== "string" || !UUID_RE.test(ref_uuid.trim())) {
+    if (!ref_uuid || typeof ref_uuid !== "string" || !REF_UUID_RE.test(ref_uuid.trim())) {
       return clientError(res, 400, "Некорректный реферальный код");
     }
 
@@ -620,14 +620,14 @@ app.get("/api/admin/referrals/events", requireAdminToken, async (req, res) => {
     let selfReferralDetections = 0;
 
     for (const event of events) {
-      if (event.ip) {
-        ipCounts[event.ip] = (ipCounts[event.ip] || 0) + 1;
+      if (event.ipHash) {
+        ipCounts[event.ipHash] = (ipCounts[event.ipHash] || 0) + 1;
       }
-      if (event.userAgent) {
-        uaCounts[event.userAgent] = (uaCounts[event.userAgent] || 0) + 1;
+      if (event.uaHash) {
+        uaCounts[event.uaHash] = (uaCounts[event.uaHash] || 0) + 1;
       }
-      if (event.fingerprint) {
-        fingerprintCounts[event.fingerprint] = (fingerprintCounts[event.fingerprint] || 0) + 1;
+      if (event.fingerprintHash) {
+        fingerprintCounts[event.fingerprintHash] = (fingerprintCounts[event.fingerprintHash] || 0) + 1;
       }
       if (event.referrerUuid) {
         referrerCounts[event.referrerUuid] = (referrerCounts[event.referrerUuid] || 0) + 1;
@@ -645,8 +645,16 @@ app.get("/api/admin/referrals/events", requireAdminToken, async (req, res) => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
+    const redactedEvents = events.map((event) => {
+      const redacted = { ...event };
+      delete redacted.ip;
+      delete redacted.userAgent;
+      delete redacted.fingerprint;
+      return redacted;
+    });
+
     return res.json({
-      events,
+      events: redactedEvents,
       stats: {
         total: events.length,
         multiAccountDetections,

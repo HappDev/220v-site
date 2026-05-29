@@ -28,6 +28,7 @@ docker compose up -d --build
 | `SES_SMTP_*` / `MAIL_FROM_*` | Отправка OTP через AWS SES |
 | `ADMIN_REDIS_TOKEN` | Токен для `/admin/redis` |
 | `ADMIN_BASIC_USER` / `ADMIN_BASIC_PASSWORD` | Basic Auth nginx для админки |
+| `IP_HASH_SECRET` | Секретная соль для хэшей IP/UA/fingerprint в реферальной аналитике; обязательна в production |
 | `REMNAWAVE_URL` | URL панели Remnawave |
 | `REMNAWAVE_TOKEN` | API-токен Remnawave (роль API) |
 | `RMW_API_URL` | Базовый URL сервиса RMW (без завершающего `/`) |
