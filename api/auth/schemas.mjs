@@ -8,7 +8,14 @@ export const emailSchema = z
   .max(254)
   .refine((v) => EMAIL_RE.test(v), { message: "Invalid email" });
 
-export const sendCodeSchema = z.object({ email: emailSchema });
+export const sendCodeSchema = z.object({
+  email: emailSchema,
+  ref_uuid: z
+    .string()
+    .trim()
+    .regex(UUID_RE, "Invalid ref_uuid")
+    .optional(),
+});
 
 export const verifySchema = z.object({
   email: emailSchema,

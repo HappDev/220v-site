@@ -15,7 +15,7 @@ type ReferralPointItem = {
   id: number;
   amount: number;
   reason: string;
-  referred_user_uuid?: string | null;
+  referred_user_email?: string | null;
   meta?: {
     tier?: string;
     tariff_key?: string;
@@ -32,6 +32,10 @@ type ReferralPointsResponse = {
   limit: number;
   total: number;
   total_pages: number;
+  eligibility?: {
+    active: boolean;
+    reason: string | null;
+  } | null;
 };
 
 const PAGE_SIZE = 20;
@@ -69,7 +73,7 @@ const FLOW_STEPS = [
     num: 2,
     Icon: Coins,
     title: "Зарабатывай баллы",
-    desc: "+1 балл за регистрацию и до +360 баллов за первую оплату тарифа приглашённым другом",
+    desc: "+1 балл за регистрацию и до +1200 баллов за первую оплату тарифа приглашённым другом",
   },
   {
     num: 3,
@@ -112,11 +116,9 @@ function formatReason(item: ReferralPointItem): string {
   return item.reason || "—";
 }
 
-function shortRefUuid(uuid: string | null | undefined): string {
-  if (!uuid || typeof uuid !== "string") return "—";
-  const trimmed = uuid.trim();
-  if (trimmed.length <= 8) return trimmed;
-  return `${trimmed.slice(0, 8)}…`;
+function formatReferredUserEmail(email: string | null | undefined): string {
+  if (!email || typeof email !== "string") return "—";
+  return email.trim() || "—";
 }
 
 function formatAmount(amount: number): string {
@@ -127,6 +129,7 @@ function formatAmount(amount: number): string {
 
 const Referrals = () => {
   const { email, items, handleLogout, userUuid, userLoading } = useDashboardSidebarItems();
+  const [backendEligibility, setBackendEligibility] = useState<{ active: boolean; reason: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [balance, setBalance] = useState(0);
@@ -144,6 +147,8 @@ const Referrals = () => {
   const [programStarted, setProgramStarted] = useState(false);
   const [startedReady, setStartedReady] = useState(false);
   const copyButtonRef = useRef<HTMLButtonElement>(null);
+
+  const referrerEligible = backendEligibility?.active;
 
   const referralLink =
     typeof window !== "undefined" && userUuid
@@ -166,6 +171,7 @@ const Referrals = () => {
       setPage(typeof data.page === "number" ? data.page : pageNum);
       setTotalPages(typeof data.total_pages === "number" ? data.total_pages : 0);
       setTotal(typeof data.total === "number" ? data.total : 0);
+      setBackendEligibility(data.eligibility || null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка загрузки данных");
     } finally {
@@ -340,6 +346,24 @@ const Referrals = () => {
               </div>
             </header>
 
+            {programStarted && referrerEligible === false && !showPageLoader && (
+              <div className="mb-6 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex-1">
+                  <p className="font-semibold mb-1">Реферальная программа приостановлена</p>
+                  <p className="text-muted-foreground text-xs leading-relaxed">
+                    Баллы начисляются только при наличии активного платного тарифа. Оплатите тариф, чтобы возобновить начисления — пропущенные за время паузы баллы не восстанавливаются.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => window.location.href = "/tariff"}
+                  className="px-4 py-2 bg-yellow-500 text-black hover:bg-yellow-400 font-medium rounded-md transition-colors text-center shrink-0"
+                >
+                  Оплатить тариф
+                </button>
+              </div>
+            )}
+
             {showPageLoader ? (
               <div className="app-page__notice app-page__notice--loader">
                 <Loader2 className="h-8 w-8 animate-spin" aria-label="Загрузка" />
@@ -406,7 +430,7 @@ const Referrals = () => {
                       </div>
                       <p className="dash-card__hint">
                         За регистрацию реферала — <strong>1</strong> балл. За первую оплату тарифа —
-                        до <strong>360</strong> баллов в зависимости от срока.{" "}
+                        до <strong>1200</strong> баллов в зависимости от срока.{" "}
                         <button
                           type="button"
                           className="dash-referrals-more-link"
@@ -515,7 +539,7 @@ const Referrals = () => {
                               <tr key={item.id}>
                                 <td>{formatDateTime(item.created_at)}</td>
                                 <td>{formatReason(item)}</td>
-                                <td>{shortRefUuid(item.referred_user_uuid)}</td>
+                                <td>{formatReferredUserEmail(item.referred_user_email)}</td>
                                 <td
                                   className={
                                     item.amount >= 0
@@ -589,13 +613,13 @@ const Referrals = () => {
             <p className="dash-modal__section-title">Первая оплата тарифа рефералом</p>
             <ul className="dash-modal__list">
               <li>
-                <strong>+30 баллов</strong> — тариф на 1 месяц
+                <strong>+100 баллов</strong> — тариф на 1 месяц
               </li>
               <li>
-                <strong>+180 баллов</strong> — тариф на 6 месяцев
+                <strong>+600 баллов</strong> — тариф на 6 месяцев
               </li>
               <li>
-                <strong>+360 баллов</strong> — тариф на 12 месяцев
+                <strong>+1200 баллов</strong> — тариф на 12 месяцев
               </li>
             </ul>
           </div>
@@ -604,13 +628,16 @@ const Referrals = () => {
             <ul className="dash-modal__list">
               <li>
                 При каждой следующей оплате тарифа тем же рефералом начисляется <strong>10%</strong> от
-                баллов первой оплаты соответствующего срока (3 / 18 / 36 баллов)
+                баллов первой оплаты соответствующего срока (10 / 60 / 120 баллов)
               </li>
             </ul>
           </div>
           <div className="dash-modal__section">
             <p className="dash-modal__section-title">Важно</p>
             <ul className="dash-modal__list">
+              <li>
+                <strong>Активный тариф</strong> — баллы начисляются только при наличии у вас (реферера) активного платного тарифа. Если ваш тариф истёк или не оплачен, реферальная программа приостанавливается, а пропущенные за время паузы начисления не восстанавливаются.
+              </li>
               <li>Баллы начисляются только за оплату подписочных тарифов, не за докупку трафика</li>
               <li>История всех начислений доступна в таблице ниже на этой странице</li>
               <li>

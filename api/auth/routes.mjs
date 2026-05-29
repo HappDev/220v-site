@@ -37,6 +37,7 @@ import {
   putOtp,
 } from "./otp.mjs";
 import { sendCodeSchema, verifySchema } from "./schemas.mjs";
+import { recordReferralEvent } from "../referrals/events.mjs";
 import {
   clearSessionCookies,
   deleteSession,
@@ -144,6 +145,14 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
           "send-code dispatched",
         );
         await recordAuthEvent("send_code_sent", req, { email, status: "ok" });
+
+        if (parsed.data.ref_uuid) {
+          await recordReferralEvent("ref_send_code", req, {
+            referrerUuid: parsed.data.ref_uuid,
+            referredEmailHash: emailHash(email),
+          });
+        }
+
         return res.json({ ok: true, retryAfterSec: OTP_COOLDOWN_SEC });
       } catch (err) {
         return serverError(res, req, err);
@@ -233,6 +242,33 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
         "login ok",
       );
       await recordAuthEvent("login_ok", req, { email, userUuid, status: "ok" });
+
+      if (parsed.data.ref_uuid) {
+        const referrerUuid = parsed.data.ref_uuid;
+        const refCredit = profile?.referrer_credit || profile?.user?.referrer_credit;
+        if (refCredit && refCredit.credited === false) {
+          await recordReferralEvent("ref_credit_skipped", req, {
+            referrerUuid,
+            referredEmailHash: emailHash(email),
+            referredUuidPrefix: userUuid.slice(0, 8),
+            reason: refCredit.reason || "unknown",
+            selfReferral: referrerUuid === userUuid,
+          });
+        } else if (referrerUuid === userUuid) {
+          await recordReferralEvent("ref_self_referral", req, {
+            referrerUuid,
+            referredEmailHash: emailHash(email),
+            referredUuidPrefix: userUuid.slice(0, 8),
+            selfReferral: true,
+          });
+        } else {
+          await recordReferralEvent("ref_verify_ok", req, {
+            referrerUuid,
+            referredEmailHash: emailHash(email),
+            referredUuidPrefix: userUuid.slice(0, 8),
+          });
+        }
+      }
 
       return res.json(profile);
     } catch (err) {

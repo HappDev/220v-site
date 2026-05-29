@@ -17,6 +17,7 @@ import {
   clearChatCompatCache,
   getVpnTalkmeProfileRaw,
 } from "@/lib/vpnStorage";
+import { resolveIsPremium } from "@/lib/tariff";
 import type { DashboardSidebarItem } from "@/components/DashboardSidebar";
 
 type SidebarUser = {
@@ -24,23 +25,8 @@ type SidebarUser = {
   isPremium: boolean;
 };
 
-const PAID_TARIFF_CODES = new Set(["1month", "6month", "12month"]);
-const PAID_PLAN_LABELS = new Set(["1 месяц", "6 месяцев", "12 месяцев"]);
-
 export const SIDEBAR_SHOW_OTHER = false;
 export const SIDEBAR_SHOW_REFERRALS = false;
-
-function resolveIsPremium(user: unknown): boolean {
-  if (!user || typeof user !== "object") return false;
-  const raw = user as Record<string, unknown>;
-  const tariff = typeof raw.tariff === "string" ? raw.tariff.toLowerCase() : "";
-  const plan = typeof raw.plan === "string" ? raw.plan.toLowerCase() : "";
-  return (
-    PAID_TARIFF_CODES.has(tariff) ||
-    plan === "premium" ||
-    PAID_PLAN_LABELS.has(plan)
-  );
-}
 
 function readCachedIsPremium(): boolean {
   try {

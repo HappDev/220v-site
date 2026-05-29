@@ -179,7 +179,7 @@ function buildTransport() {
 
 function buildOtpMessage(code) {
   const safeCode = escapeHtml(code);
-  const subject = `${code} — код для входа в 220v`;
+  const subject = `Ваш код для входа в 220v`;
   const text = [
     "220v · безопасный VPN",
     "",
@@ -192,7 +192,7 @@ function buildOtpMessage(code) {
     "Не сообщайте код никому — команда 220v никогда не просит его по почте или в чате.",
     "Если вы не запрашивали вход, просто удалите это письмо.",
     "",
-    "— 220v",
+    "220v",
     "support@220v.shop",
   ].join("\n");
 

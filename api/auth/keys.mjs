@@ -4,6 +4,13 @@ export const sessionKey = (sid) => `${PREFIX}sess:${sid}`;
 export const otpKey = (email) => `${PREFIX}otp:${email}`;
 export const otpCooldownKey = (email) => `${PREFIX}otp:cooldown:${email}`;
 
+export const refEventsListKey = () => `${PREFIX}ref:events`;
+export const refEventsReferrerIndexKey = (refUuid) => `${PREFIX}ref:events:by_referrer:${refUuid}`;
+export const refEventsIpIndexKey = (ipHash) => `${PREFIX}ref:events:by_ip:${ipHash}`;
+export const refEventsUaIndexKey = (uaHash) => `${PREFIX}ref:events:by_ua:${uaHash}`;
+export const refEventsFingerprintIndexKey = (fingerprintHash) => `${PREFIX}ref:events:by_fingerprint:${fingerprintHash}`;
+export const refStatsReferrerKey = (refUuid) => `${PREFIX}ref:stats:referrer:${refUuid}`;
+
 export const SCAN_PATTERNS = {
   otp: `${PREFIX}otp:*`,
   otpCooldown: `${PREFIX}otp:cooldown:*`,
@@ -15,6 +22,13 @@ export const SCAN_PATTERNS = {
   rlTalkmeIp: `${PREFIX}rl:talkme:ip:*`,
   rlTalkmeSid: `${PREFIX}rl:talkme:sid:*`,
   rlChatUploadSid: `${PREFIX}rl:chatupload:sid:*`,
+  refEvents: `${PREFIX}ref:events`,
+  refEventsByReferrer: `${PREFIX}ref:events:by_referrer:*`,
+  refEventsByIp: `${PREFIX}ref:events:by_ip:*`,
+  refEventsByUa: `${PREFIX}ref:events:by_ua:*`,
+  refEventsByFingerprint: `${PREFIX}ref:events:by_fingerprint:*`,
+  refStatsReferrer: `${PREFIX}ref:stats:referrer:*`,
+  rlRefClickIp: `${PREFIX}rl:refclick:ip:*`,
 };
 
 export const RL_PREFIXES = {
@@ -25,6 +39,7 @@ export const RL_PREFIXES = {
   talkmeIp: `${PREFIX}rl:talkme:ip:`,
   talkmeSession: `${PREFIX}rl:talkme:sid:`,
   chatUploadSession: `${PREFIX}rl:chatupload:sid:`,
+  refClickIp: `${PREFIX}rl:refclick:ip:`,
 };
 
 export const KEY_PREFIXES = {

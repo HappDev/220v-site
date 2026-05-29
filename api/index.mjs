@@ -11,10 +11,12 @@ import { redis } from "./redis.mjs";
 import { clientError, serverError } from "./http/errors.mjs";
 import { fetchWithTimeout } from "./http/fetchWithTimeout.mjs";
 import { isTimeoutError, publicMessageFromErr, timeoutStatusCode } from "./http/userMessages.mjs";
-import { checkoutSessionLimiter } from "./http/rateLimit.mjs";
+import { checkoutSessionLimiter, refClickIpLimiter } from "./http/rateLimit.mjs";
+import { recordReferralEvent, queryReferralEvents } from "./referrals/events.mjs";
+import { SESSION_COOKIE } from "./config.mjs";
 import { base64url } from "./auth/crypto.mjs";
 import { createAuthRouter } from "./auth/routes.mjs";
-import { requireSession } from "./auth/session.mjs";
+import { requireSession, getSession, requireAdminToken } from "./auth/session.mjs";
 import { getMailerConfigSummary, sendOtpEmail, verifyMailerConfig } from "./mailer.mjs";
 import { registerTalkMeRoutes } from "./talkme-routes.mjs";
 
@@ -381,6 +383,7 @@ function buildUserResponse(user, exists) {
       username: user.username,
       userUuid: user.uuid || user.userUuid,
       shortUuid: user.shortUuid || user.short_uuid,
+      inviter_uuid: user.inviterUuid || user.inviter_uuid || null,
       subscriptionUrl: extractSubscriptionUrl(user),
       usedTrafficBytes:
         user.usedTrafficBytes ??
@@ -558,6 +561,106 @@ app.use(
 );
 
 // --- Routes ---
+
+app.post("/api/ref/click", refClickIpLimiter, async (req, res) => {
+  try {
+    const { ref_uuid, fingerprint } = req.body || {};
+    if (!ref_uuid || typeof ref_uuid !== "string" || !UUID_RE.test(ref_uuid.trim())) {
+      return clientError(res, 400, "Некорректный реферальный код");
+    }
+
+    const referrerUuid = ref_uuid.trim();
+    let otherUserUuidPrefix;
+    let selfReferral = false;
+
+    const sid = req.cookies?.[SESSION_COOKIE];
+    if (sid) {
+      const session = await getSession(sid);
+      if (session && typeof session.userUuid === "string" && session.userUuid) {
+        const currentUserUuid = session.userUuid.trim();
+        otherUserUuidPrefix = currentUserUuid.slice(0, 8);
+        selfReferral = currentUserUuid === referrerUuid;
+      }
+    }
+
+    await recordReferralEvent("ref_click", req, {
+      referrerUuid,
+      fingerprint,
+      otherUserUuidPrefix,
+      selfReferral,
+    });
+
+    return res.sendStatus(204);
+  } catch (err) {
+    return serverError(res, req, err);
+  }
+});
+
+app.get("/api/admin/referrals/events", requireAdminToken, async (req, res) => {
+  try {
+    const limit = Math.min(500, Number(req.query.limit) || 100);
+    const filters = {
+      referrerUuid: req.query.referrer_uuid || undefined,
+      ip: req.query.ip || undefined,
+      fingerprint: req.query.fingerprint || undefined,
+      type: req.query.type || undefined,
+      since: req.query.since || undefined,
+      until: req.query.until || undefined,
+      limit,
+    };
+
+    const events = await queryReferralEvents(filters);
+
+    // Compute aggregations / stats for anti-fraud detection
+    const ipCounts = {};
+    const uaCounts = {};
+    const fingerprintCounts = {};
+    const referrerCounts = {};
+    let multiAccountDetections = 0;
+    let selfReferralDetections = 0;
+
+    for (const event of events) {
+      if (event.ip) {
+        ipCounts[event.ip] = (ipCounts[event.ip] || 0) + 1;
+      }
+      if (event.userAgent) {
+        uaCounts[event.userAgent] = (uaCounts[event.userAgent] || 0) + 1;
+      }
+      if (event.fingerprint) {
+        fingerprintCounts[event.fingerprint] = (fingerprintCounts[event.fingerprint] || 0) + 1;
+      }
+      if (event.referrerUuid) {
+        referrerCounts[event.referrerUuid] = (referrerCounts[event.referrerUuid] || 0) + 1;
+      }
+      if (event.otherUserUuidPrefix) {
+        multiAccountDetections++;
+      }
+      if (event.selfReferral || event.type === "ref_self_referral") {
+        selfReferralDetections++;
+      }
+    }
+
+    const sortDesc = (obj) => Object.entries(obj)
+      .map(([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    return res.json({
+      events,
+      stats: {
+        total: events.length,
+        multiAccountDetections,
+        selfReferralDetections,
+        topIps: sortDesc(ipCounts),
+        topUserAgents: sortDesc(uaCounts),
+        topFingerprints: sortDesc(fingerprintCounts),
+        topReferrers: sortDesc(referrerCounts),
+      }
+    });
+  } catch (err) {
+    return serverError(res, req, err);
+  }
+});
 
 app.get("/api/health", async (req, res) => {
   const redisStatus = redis.status;
@@ -864,6 +967,20 @@ app.post("/api/checkout", requireSession, checkoutSessionLimiter, async (req, re
     if (paymentUrl && !isAllowedPaymentUrl(paymentUrl)) {
       req.log.error({ paymentUrlHost: new URL(paymentUrl).hostname }, "payment_url host not allowed");
       return clientError(res, 502, "Получена некорректная ссылка на оплату");
+    }
+
+    try {
+      const profile = await loadUserProfileForEmail(req.session.email, req);
+      const inviterUuid = profile?.user?.inviter_uuid || profile?.user?.inviterUuid;
+      if (inviterUuid) {
+        await recordReferralEvent("ref_checkout_by_referred", req, {
+          referrerUuid: inviterUuid,
+          referredUuidPrefix: req.session.userUuid.slice(0, 8),
+          tariffKey: tariff_key,
+        });
+      }
+    } catch (err) {
+      req.log.warn({ err }, "Failed to resolve inviter during checkout log");
     }
 
     return res.json(data);

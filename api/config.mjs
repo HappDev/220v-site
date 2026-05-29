@@ -42,3 +42,15 @@ export const ALLOWED_EMAIL_DOMAINS = new Set(
     .map((d) => d.trim().toLowerCase())
     .filter(Boolean),
 );
+
+export const REF_EVENT_LIMIT =
+  Number.isInteger(Number(process.env.REF_EVENT_LIMIT)) && Number(process.env.REF_EVENT_LIMIT) > 0
+    ? Number(process.env.REF_EVENT_LIMIT)
+    : 20000;
+
+export const REF_EVENT_TTL_SEC =
+  Number.isInteger(Number(process.env.REF_EVENT_TTL_SEC)) && Number(process.env.REF_EVENT_TTL_SEC) > 0
+    ? Number(process.env.REF_EVENT_TTL_SEC)
+    : 31536000; // 365 days
+
+export const IP_HASH_SECRET = process.env.IP_HASH_SECRET || "default_ref_secret";

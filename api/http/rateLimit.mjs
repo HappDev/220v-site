@@ -86,3 +86,10 @@ export const chatUploadLimiter = makeRateLimit({
   keyGenerator: (req) => req.cookies?.[SESSION_COOKIE] || req.ip,
   message: { error: "Слишком много загрузок файлов. Попробуйте позже." },
 });
+
+export const refClickIpLimiter = makeRateLimit({
+  windowMs: 60 * 1000,
+  max: 15,
+  prefix: "v220:rl:refclick:ip:",
+  message: { error: "Слишком много переходов по ссылке. Попробуйте позже." },
+});

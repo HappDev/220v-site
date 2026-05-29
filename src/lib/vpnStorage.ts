@@ -150,3 +150,13 @@ export function consumePendingRefUuid(): string {
   }
   return "";
 }
+
+export function peekPendingRefUuid(): string {
+  try {
+    const raw = sessionStorage.getItem(PENDING_REF_UUID_KEY);
+    if (raw && isValidRefUuid(raw)) return raw.trim();
+  } catch {
+    // ignore
+  }
+  return "";
+}

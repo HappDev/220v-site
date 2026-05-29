@@ -11,6 +11,7 @@ import {
   persistChatCompatCache,
   setPendingRefUuid,
   consumePendingRefUuid,
+  peekPendingRefUuid,
   setVpnPendingRedirect,
 } from "@/lib/vpnStorage";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
@@ -65,6 +66,24 @@ function hrefAfterLoginFromPendingSearch(): string {
   }
 }
 
+async function getBrowserFingerprint(): Promise<string> {
+  try {
+    const rawString = [
+      navigator.userAgent || "",
+      screen.width || "",
+      screen.height || "",
+      navigator.language || "",
+      Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+    ].join("|");
+    const msgBuffer = new TextEncoder().encode(rawString);
+    const hashBuffer = await window.crypto.subtle.digest("SHA-256", msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return "";
+  }
+}
+
 type LoginStep = "email" | "verify";
 
 const Index = () => {
@@ -96,6 +115,12 @@ const Index = () => {
     const ref = sp.get("ref");
     if (ref) {
       setPendingRefUuid(ref);
+      getBrowserFingerprint().then((fingerprint) => {
+        void apiPost("/ref/click", { ref_uuid: ref, fingerprint });
+      }).catch(() => {
+        void apiPost("/ref/click", { ref_uuid: ref });
+      });
+
       sp.delete("ref");
       const nextSearch = sp.toString();
       navigate(
@@ -166,11 +191,17 @@ const Index = () => {
     sendingRef.current = true;
     setLoading(true);
     try {
+      const refUuid = peekPendingRefUuid();
+      const sendCodeBody: { email: string; ref_uuid?: string } = {
+        email: normalizedEmail,
+      };
+      if (refUuid) {
+        sendCodeBody.ref_uuid = refUuid;
+      }
+
       const { data, error, retryAfterSec } = await apiPost<{ ok?: boolean; error?: string; retryAfterSec?: number }>(
         "/auth/send-code",
-        {
-          email: normalizedEmail,
-        },
+        sendCodeBody,
       );
 
       if (error) {
