@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, GitBranch } from "lucide-react";
+import { AlertTriangle, ChevronRight, GitBranch } from "lucide-react";
 
 import AdminPageShell from "@/components/AdminPageShell";
 import { Badge } from "@/components/ui/badge";
@@ -383,8 +383,14 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
                         }}
                       >
                         <summary className="grid cursor-pointer list-none grid-cols-1 gap-3 p-4 text-sm hover:bg-muted/50 md:grid-cols-[minmax(210px,1.5fr)_110px_80px_minmax(170px,1fr)_minmax(150px,1fr)_minmax(220px,1.5fr)_130px] [&::-webkit-details-marker]:hidden">
-                          <span className="break-all font-mono text-xs font-semibold text-foreground">
-                            {item.referrerUuid}
+                          <span className="flex min-w-0 items-start gap-2 text-foreground">
+                            <ChevronRight
+                              className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+                              aria-hidden="true"
+                            />
+                            <span className="min-w-0 break-all font-mono text-xs font-semibold">
+                              {item.referrerUuid}
+                            </span>
                           </span>
                           <span>
                             <RiskBadge level={item.riskLevel} />
@@ -417,7 +423,7 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
                           <div className="mb-3 flex flex-wrap gap-2">
                             <button
                               type="button"
-                              className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted"
+                              className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
                               onClick={() => openReferralHistory(item.referrerUuid)}
                             >
                               История
