@@ -162,11 +162,17 @@ function scoreReferrer(group) {
     score += points;
   };
 
-  if (counts.selfReferrals > 0 || group.hasSelfReferral) {
+  if (group.otherAccountPrefixes.size > 0) {
     addWarning(
-      makeWarning("self_referral", "Есть попытка self-referral", "critical", {
-        selfReferrals: counts.selfReferrals,
-      }),
+      makeWarning(
+        "same_browser_other_account",
+        "Другой аккаунт зарегистрирован/активен в том же браузере",
+        "critical",
+        {
+          accounts: group.otherAccountPrefixes.size,
+          prefixes: [...group.otherAccountPrefixes].slice(0, 5),
+        },
+      ),
       100,
     );
   }
@@ -330,8 +336,11 @@ export function buildReferralSummary(events, opts = {}) {
     if (event.ipHash) increment(ipCounts, event.ipHash);
     if (event.uaHash) increment(uaCounts, event.uaHash);
     if (event.fingerprintHash) increment(fingerprintCounts, event.fingerprintHash);
-    if (event.selfReferral || event.type === "ref_self_referral") totals.selfReferrals += 1;
-    if (event.otherUserUuidPrefix) totals.multiAccountDetections += 1;
+    const isSelfReferral = Boolean(event.selfReferral) || event.type === "ref_self_referral";
+    if (isSelfReferral) totals.selfReferrals += 1;
+    // Self-referrals also carry otherUserUuidPrefix (the user's own prefix); they are benign
+    // and rejected by the reward logic, so only count interactions from a *different* account.
+    if (event.otherUserUuidPrefix && !isSelfReferral) totals.multiAccountDetections += 1;
 
     const referrerUuid = typeof event.referrerUuid === "string" ? event.referrerUuid.trim() : "";
     if (!referrerUuid) continue;
@@ -351,15 +360,21 @@ export function buildReferralSummary(events, opts = {}) {
         uniqueFingerprints: new Set(),
         uniqueReferredEmails: new Set(),
         uniqueReferredUsers: new Set(),
+        otherAccountPrefixes: new Set(),
         events: [],
         lastSeen: null,
-        hasSelfReferral: false,
       };
       groups.set(referrerUuid, group);
     }
 
     if (countKey) group.counts[countKey] += 1;
-    if (event.selfReferral || event.type === "ref_self_referral") group.hasSelfReferral = true;
+    if (
+      event.otherUserUuidPrefix &&
+      !isSelfReferral &&
+      event.otherUserUuidPrefix !== referrerUuid.slice(0, 8)
+    ) {
+      group.otherAccountPrefixes.add(event.otherUserUuidPrefix);
+    }
     if (event.ipHash) group.uniqueIps.add(event.ipHash);
     if (event.uaHash) group.uniqueUserAgents.add(event.uaHash);
     if (event.fingerprintHash) group.uniqueFingerprints.add(event.fingerprintHash);

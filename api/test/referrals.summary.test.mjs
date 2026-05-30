@@ -94,13 +94,39 @@ describe("referral admin summary", () => {
     assert.equal(res.body.funnel.verifies, 1);
     assert.equal(res.body.funnel.checkouts, 1);
     assert.equal(res.body.funnel.selfReferrals, 1);
-    assert.equal(res.body.referrers[0].referrerUuid, REF_A);
-    assert.equal(res.body.referrers[0].riskLevel, "critical");
-    assert.ok(res.body.referrers[0].warnings.some((warning) => warning.code === "self_referral"));
+    const refA = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
+    assert.ok(refA);
+    // Self-referral is harmless (rejected by reward logic) and must not be flagged as fraud.
+    assert.notEqual(refA.riskLevel, "critical");
+    assert.ok(!refA.warnings.some((warning) => warning.code === "self_referral"));
+    assert.equal(res.body.totals.multiAccountDetections, 0);
     assert.deepEqual(
       res.body.dailyRegistrations.find((item) => item.date === today),
-      { date: today, registrations: 1, suspicious: 1 },
+      { date: today, registrations: 1, suspicious: 0 },
     );
+  });
+
+  it("flags another account active in the same browser as critical", async () => {
+    await seedEvents([
+      event({ type: "ref_click", referrerUuid: REF_A, otherUserUuidPrefix: "99999999", selfReferral: false }),
+      event({ type: "ref_self_referral", referrerUuid: REF_B, otherUserUuidPrefix: "22222222", selfReferral: true }),
+    ]);
+
+    const res = await getSummary("?days=all&limit=50");
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.totals.multiAccountDetections, 1);
+
+    const refA = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
+    assert.ok(refA);
+    assert.equal(refA.riskLevel, "critical");
+    assert.ok(refA.warnings.some((warning) => warning.code === "same_browser_other_account"));
+
+    // A self-referral carries the user's own prefix and must not be treated as multi-account.
+    const refB = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_B);
+    assert.ok(refB);
+    assert.notEqual(refB.riskLevel, "critical");
+    assert.ok(!refB.warnings.some((warning) => warning.code === "same_browser_other_account"));
   });
 
   it("marks repeated fingerprint identities as critical", async () => {
