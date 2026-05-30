@@ -161,7 +161,7 @@ const CopySubscriptionLink = ({ subscriptionUrl }: { subscriptionUrl?: string })
 
     if (ok) {
       toast.success("Ссылка скопирована!", {
-        style: { background: "#22c55e", color: "#fff", border: "none" },
+        style: { background: "#0a0a0a", color: "#fff", border: "1px solid #22c55e" },
       });
     } else {
       toast.error("Не удалось скопировать. Скопируйте вручную:", {
