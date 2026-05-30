@@ -3,6 +3,7 @@ import { AlertTriangle, GitBranch } from "lucide-react";
 
 import AdminPageShell from "@/components/AdminPageShell";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ADMIN_TOKEN_STORAGE_KEY } from "@/lib/admin";
 import { apiBase } from "@/lib/api";
@@ -69,6 +70,33 @@ type ReferrerUserLookup = {
   error?: string;
 };
 
+type ReferralPointItem = {
+  id: number | string;
+  amount: number;
+  reason: string;
+  referred_user_email?: string | null;
+  meta?: {
+    tier?: string;
+    tariff_key?: string;
+    is_first?: boolean;
+    trigger?: string;
+  } | null;
+  created_at: string;
+};
+
+type ReferralPointsResponse = {
+  balance: number;
+  items: ReferralPointItem[];
+  page: number;
+  limit: number;
+  total: number;
+  total_pages: number;
+  eligibility?: {
+    active: boolean;
+    reason: string | null;
+  } | null;
+};
+
 type ReferralSummary = {
   generatedAt: string;
   window: { days: number | null; since: string | null; until: string };
@@ -116,6 +144,8 @@ const EVENT_FILTERS = [
   { value: "ref_self_referral", label: "Self-referral" },
 ];
 
+const HISTORY_PAGE_SIZE = 20;
+
 function formatDate(value?: string | null) {
   if (!value) return "—";
   const date = new Date(value);
@@ -125,6 +155,24 @@ function formatDate(value?: string | null) {
 
 function asErrorMessage(error: unknown) {
   return formatUserError(error, "Не удалось загрузить данные");
+}
+
+function formatAmount(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  return value > 0 ? `+${value}` : String(value);
+}
+
+function formatReferralPointReason(item: ReferralPointItem): string {
+  if (item.reason === "registration") return "Регистрация реферала";
+  if (item.reason === "tariff_payment") {
+    const tier = item.meta?.tier;
+    const tierLabel =
+      tier === "1m" ? "1 мес." : tier === "6m" ? "6 мес." : tier === "12m" ? "12 мес." : null;
+    const suffix = tierLabel ? ` (${tierLabel})` : "";
+    const first = item.meta?.is_first ? " — первая оплата" : "";
+    return `Оплата тарифа реферала${suffix}${first}`;
+  }
+  return item.reason || "—";
 }
 
 function riskClass(level: RiskLevel) {
@@ -216,6 +264,11 @@ function WarningList({ warnings }: { warnings: ReferralWarning[] }) {
 
 function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eventType: string; token: string }) {
   const [userLookups, setUserLookups] = useState<Record<string, ReferrerUserLookup>>({});
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyUuid, setHistoryUuid] = useState("");
+  const [historyData, setHistoryData] = useState<ReferralPointsResponse | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
 
   const loadUserEmail = useCallback(
     async (uuid: string) => {
@@ -248,107 +301,244 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
     [token, userLookups],
   );
 
+  const loadReferralHistory = useCallback(
+    async (uuid: string, pageNum = 1) => {
+      setHistoryLoading(true);
+      setHistoryError("");
+      try {
+        const qs = new URLSearchParams({
+          page: String(pageNum),
+          limit: String(HISTORY_PAGE_SIZE),
+        });
+        const res = await fetch(
+          `${apiBase}/admin/referrals/users/${encodeURIComponent(uuid)}/points?${qs}`,
+          {
+            headers: { "X-Admin-Token": token.trim() },
+            credentials: "include",
+          },
+        );
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message =
+            body && typeof body === "object" && "error" in body && typeof body.error === "string"
+              ? body.error
+              : `Ошибка ${res.status}`;
+          throw new Error(message);
+        }
+        setHistoryData(body as ReferralPointsResponse);
+      } catch (err) {
+        setHistoryError(asErrorMessage(err));
+      } finally {
+        setHistoryLoading(false);
+      }
+    },
+    [token],
+  );
+
+  const openReferralHistory = useCallback(
+    (uuid: string) => {
+      setHistoryUuid(uuid);
+      setHistoryData(null);
+      setHistoryOpen(true);
+      void loadReferralHistory(uuid, 1);
+    },
+    [loadReferralHistory],
+  );
+
+  const selectedUserLookup = historyUuid ? userLookups[historyUuid] : null;
+
   return (
-    <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
-      <div className="mb-3 flex items-center gap-2">
-        <AlertTriangle className="h-5 w-5 text-primary" />
-        <h2 className="text-lg font-bold text-foreground">Рефереры с риском</h2>
-      </div>
-      {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">По выбранным фильтрам ничего не найдено</p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Реферер</TableHead>
-              <TableHead>Риск</TableHead>
-              <TableHead>Score</TableHead>
-              <TableHead>Воронка</TableHead>
-              <TableHead>Unique</TableHead>
-              <TableHead>Warning-и</TableHead>
-              <TableHead>Last seen</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((item) => {
-              const visibleEvents =
-                eventType === "all" ? item.events : item.events.filter((event) => event.type === eventType);
-              return (
-                <TableRow key={item.referrerUuid}>
-                  <TableCell colSpan={7} className="p-0">
-                    <details
-                      className="group"
-                      onToggle={(event) => {
-                        if (event.currentTarget.open) void loadUserEmail(item.referrerUuid);
-                      }}
-                    >
-                      <summary className="grid cursor-pointer list-none grid-cols-1 gap-3 p-4 text-sm hover:bg-muted/50 md:grid-cols-[minmax(210px,1.5fr)_110px_80px_minmax(170px,1fr)_minmax(150px,1fr)_minmax(220px,1.5fr)_130px] [&::-webkit-details-marker]:hidden">
-                        <span className="break-all font-mono text-xs font-semibold text-foreground">
-                          {item.referrerUuid}
-                        </span>
-                        <span>
-                          <RiskBadge level={item.riskLevel} />
-                        </span>
-                        <span className="font-bold text-foreground">{item.riskScore}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {item.counts.clicks}/{item.counts.codes}/{item.counts.verifies}/{item.counts.checkouts}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          IP {item.unique.ipHashes} · UA {item.unique.userAgentHashes} · FP{" "}
-                          {item.unique.fingerprintHashes}
-                        </span>
-                        <WarningList warnings={item.warnings} />
-                        <span className="text-xs text-muted-foreground">{formatDate(item.lastSeen)}</span>
-                      </summary>
-                      <div className="border-t border-border bg-muted/20 p-4">
-                        <div className="mb-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
-                          <div className="break-all">
-                            Email:{" "}
-                            {userLookups[item.referrerUuid]?.loading
-                              ? "загрузка..."
-                              : userLookups[item.referrerUuid]?.error ||
-                                userLookups[item.referrerUuid]?.email ||
-                                "—"}
+    <>
+      <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
+        <div className="mb-3 flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-bold text-foreground">Рефереры с риском</h2>
+        </div>
+        {items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">По выбранным фильтрам ничего не найдено</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Реферер</TableHead>
+                <TableHead>Риск</TableHead>
+                <TableHead>Score</TableHead>
+                <TableHead>Воронка</TableHead>
+                <TableHead>Unique</TableHead>
+                <TableHead>Warning-и</TableHead>
+                <TableHead>Last seen</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((item) => {
+                const visibleEvents =
+                  eventType === "all" ? item.events : item.events.filter((event) => event.type === eventType);
+                return (
+                  <TableRow key={item.referrerUuid}>
+                    <TableCell colSpan={7} className="p-0">
+                      <details
+                        className="group"
+                        onToggle={(event) => {
+                          if (event.currentTarget.open) void loadUserEmail(item.referrerUuid);
+                        }}
+                      >
+                        <summary className="grid cursor-pointer list-none grid-cols-1 gap-3 p-4 text-sm hover:bg-muted/50 md:grid-cols-[minmax(210px,1.5fr)_110px_80px_minmax(170px,1fr)_minmax(150px,1fr)_minmax(220px,1.5fr)_130px] [&::-webkit-details-marker]:hidden">
+                          <span className="break-all font-mono text-xs font-semibold text-foreground">
+                            {item.referrerUuid}
+                          </span>
+                          <span>
+                            <RiskBadge level={item.riskLevel} />
+                          </span>
+                          <span className="font-bold text-foreground">{item.riskScore}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {item.counts.clicks}/{item.counts.codes}/{item.counts.verifies}/{item.counts.checkouts}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            IP {item.unique.ipHashes} · UA {item.unique.userAgentHashes} · FP{" "}
+                            {item.unique.fingerprintHashes}
+                          </span>
+                          <WarningList warnings={item.warnings} />
+                          <span className="text-xs text-muted-foreground">{formatDate(item.lastSeen)}</span>
+                        </summary>
+                        <div className="border-t border-border bg-muted/20 p-4">
+                          <div className="mb-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                            <div className="break-all">
+                              Email:{" "}
+                              {userLookups[item.referrerUuid]?.loading
+                                ? "загрузка..."
+                                : userLookups[item.referrerUuid]?.error ||
+                                  userLookups[item.referrerUuid]?.email ||
+                                  "—"}
+                            </div>
+                            <div>Email hashes: {item.unique.referredEmailHashes}</div>
+                            <div>User prefixes: {item.unique.referredUuidPrefixes}</div>
+                            <div>Credit skipped: {item.counts.creditSkipped}</div>
                           </div>
-                          <div>Email hashes: {item.unique.referredEmailHashes}</div>
-                          <div>User prefixes: {item.unique.referredUuidPrefixes}</div>
-                          <div>Credit skipped: {item.counts.creditSkipped}</div>
-                        </div>
-                        {item.warnings.length > 0 && (
-                          <div className="mb-3 space-y-2">
-                            {item.warnings.map((warning) => (
-                              <div key={warning.code} className="rounded-lg bg-background p-3 ring-1 ring-border">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <RiskBadge level={warning.severity} />
-                                  <span className="font-semibold text-foreground">{warning.label}</span>
-                                  <span className="font-mono text-xs text-muted-foreground">{warning.code}</span>
+                          <div className="mb-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted"
+                              onClick={() => openReferralHistory(item.referrerUuid)}
+                            >
+                              История
+                            </button>
+                          </div>
+                          {item.warnings.length > 0 && (
+                            <div className="mb-3 space-y-2">
+                              {item.warnings.map((warning) => (
+                                <div key={warning.code} className="rounded-lg bg-background p-3 ring-1 ring-border">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <RiskBadge level={warning.severity} />
+                                    <span className="font-semibold text-foreground">{warning.label}</span>
+                                    <span className="font-mono text-xs text-muted-foreground">{warning.code}</span>
+                                  </div>
+                                  <pre className="mt-2 overflow-auto rounded bg-muted p-2 text-xs text-muted-foreground">
+                                    {JSON.stringify(warning.evidence, null, 2)}
+                                  </pre>
                                 </div>
-                                <pre className="mt-2 overflow-auto rounded bg-muted p-2 text-xs text-muted-foreground">
-                                  {JSON.stringify(warning.evidence, null, 2)}
-                                </pre>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div className="space-y-2">
-                          {visibleEvents.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">Нет событий выбранного типа</p>
-                          ) : (
-                            visibleEvents.map((event, index) => (
-                              <EventCard key={event.id || `${event.at}-${index}`} event={event} />
-                            ))
+                              ))}
+                            </div>
                           )}
+                          <div className="space-y-2">
+                            {visibleEvents.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">Нет событий выбранного типа</p>
+                            ) : (
+                              visibleEvents.map((event, index) => (
+                                <EventCard key={event.id || `${event.at}-${index}`} event={event} />
+                              ))
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </details>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      )}
-    </section>
+                      </details>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </section>
+
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>История рефералов</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-1 break-all">
+                <p>UUID: {historyUuid || "—"}</p>
+                {selectedUserLookup?.email ? <p>Email: {selectedUserLookup.email}</p> : null}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+
+          {historyLoading && !historyData ? (
+            <p className="text-sm text-muted-foreground">Загрузка истории...</p>
+          ) : historyError ? (
+            <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{historyError}</p>
+          ) : !historyData || historyData.items.length === 0 ? (
+            <p className="text-sm text-muted-foreground">История рефералов пустая</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                <Badge variant="secondary">Баланс: {historyData.balance ?? 0}</Badge>
+                <Badge variant="secondary">Всего записей: {historyData.total ?? historyData.items.length}</Badge>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Дата</TableHead>
+                    <TableHead>Событие</TableHead>
+                    <TableHead>Реферал</TableHead>
+                    <TableHead>Баллы</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {historyData.items.map((item, index) => (
+                    <TableRow key={item.id || `${item.created_at}-${index}`}>
+                      <TableCell className="whitespace-nowrap text-xs">{formatDate(item.created_at)}</TableCell>
+                      <TableCell className="text-xs">{formatReferralPointReason(item)}</TableCell>
+                      <TableCell className="break-all text-xs">{item.referred_user_email || "—"}</TableCell>
+                      <TableCell
+                        className={cn(
+                          "text-xs font-bold",
+                          item.amount >= 0 ? "text-emerald-600" : "text-destructive",
+                        )}
+                      >
+                        {formatAmount(item.amount)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {historyData && historyData.total_pages > 1 ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <button
+                type="button"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={historyData.page <= 1 || historyLoading}
+                onClick={() => void loadReferralHistory(historyUuid, historyData.page - 1)}
+              >
+                Назад
+              </button>
+              <span className="text-sm text-muted-foreground">
+                Страница {historyData.page} из {historyData.total_pages}
+              </span>
+              <button
+                type="button"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={historyData.page >= historyData.total_pages || historyLoading}
+                onClick={() => void loadReferralHistory(historyUuid, historyData.page + 1)}
+              >
+                Вперёд
+              </button>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

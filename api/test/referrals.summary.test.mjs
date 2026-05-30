@@ -185,4 +185,31 @@ describe("referral admin summary", () => {
     assert.equal(res.status, 200);
     assert.deepEqual(res.body, { uuid: REF_A, email: "referrer@example.com" });
   });
+
+  it("returns referrer points history from RMW by UUID", async () => {
+    globalThis.fetch = async (url, options) => {
+      assert.equal(url, `${process.env.RMW_API_URL}/v1/users/${REF_A}/referral-points?page=2&limit=10`);
+      assert.equal(options.headers["X-Api-Key"], process.env.RMW_API_KEY);
+      return new Response(
+        JSON.stringify({
+          balance: 15,
+          items: [{ id: 1, amount: 1, reason: "registration", created_at: "2026-01-01T00:00:00.000Z" }],
+          page: 2,
+          limit: 10,
+          total: 11,
+          total_pages: 2,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    const res = await request(app)
+      .get(`/api/admin/referrals/users/${REF_A}/points?page=2&limit=10`)
+      .set("X-Admin-Token", "admin-test-token");
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.balance, 15);
+    assert.equal(res.body.page, 2);
+    assert.equal(res.body.items[0].reason, "registration");
+  });
 });

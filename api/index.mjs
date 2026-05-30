@@ -243,6 +243,50 @@ async function fetchRmwUserEmail(userUuid) {
   return email;
 }
 
+async function fetchRmwReferralPoints(userUuid, { page, limit }) {
+  const uuid = assertValidUuid(userUuid);
+  const rmwUrl = rmwBaseUrl();
+  const rmwKey = rmwApiKey();
+  if (!rmwUrl || !rmwKey) {
+    const err = new Error("RMW not configured");
+    err.status = 500;
+    throw err;
+  }
+
+  const qs = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  });
+  const r = await fetchWithTimeout(
+    `${rmwUrl}/v1/users/${encodeURIComponent(uuid)}/referral-points?${qs}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": rmwKey,
+      },
+    },
+  );
+
+  const text = await r.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    const err = new Error("Invalid JSON from RMW referral-points");
+    err.status = 502;
+    throw err;
+  }
+
+  if (!r.ok) {
+    const err = new Error("RMW referral-points failed");
+    err.status = r.status >= 400 && r.status < 600 ? r.status : 502;
+    throw err;
+  }
+
+  return data;
+}
+
 async function getRmwBillingMeta({ allowCache = true } = {}) {
   const rmwUrl = rmwBaseUrl();
   const rmwKey = rmwApiKey();
@@ -808,6 +852,25 @@ app.get("/api/admin/referrals/users/:uuid", requireAdminToken, async (req, res) 
   }
 });
 
+app.get("/api/admin/referrals/users/:uuid/points", requireAdminToken, async (req, res) => {
+  try {
+    const uuid = assertValidUuid(req.params.uuid);
+    const pageRaw = Number(req.query.page);
+    const limitRaw = Number(req.query.limit);
+    const page = Number.isInteger(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+    const limit =
+      Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(100, limitRaw) : 20;
+    const data = await fetchRmwReferralPoints(uuid, { page, limit });
+    return res.json(data);
+  } catch (err) {
+    if (err?.message === "Invalid user UUID") {
+      return clientError(res, 400, "Некорректный UUID пользователя");
+    }
+    const status = err.status || 502;
+    return clientError(res, status, "Не удалось загрузить историю рефералов из RMW");
+  }
+});
+
 app.get("/api/health", async (req, res) => {
   const redisStatus = redis.status;
   if (redisStatus !== "ready") {
@@ -867,41 +930,15 @@ app.get("/api/me/referrals/points", requireSession, async (req, res) => {
       return clientError(res, 500, "Сервис рефералов временно недоступен");
     }
 
-    const qs = new URLSearchParams({
-      page: String(page),
-      limit: String(limit),
-    });
-    const r = await fetchWithTimeout(
-      `${rmwUrl}/v1/users/${encodeURIComponent(userUuid)}/referral-points?${qs}`,
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Api-Key": rmwKey,
-        },
-      },
-    );
-
-    const text = await r.text();
-    let data;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      return clientError(res, 502, "Не удалось загрузить историю рефералов");
-    }
-
-    if (!r.ok) {
-      req.log.warn({ status: r.status }, "RMW referral-points failed");
-      return clientError(
-        res,
-        r.status >= 400 && r.status < 600 ? r.status : 502,
-        "Не удалось загрузить историю рефералов",
-      );
-    }
-
+    const data = await fetchRmwReferralPoints(userUuid, { page, limit });
     return res.json(data);
   } catch (err) {
-    return serverError(res, req, err);
+    const status = err.status || 502;
+    if (err?.message === "Invalid user UUID") {
+      return clientError(res, 400, "Некорректный UUID пользователя");
+    }
+    req.log.warn({ err, status }, "RMW referral-points failed");
+    return clientError(res, status, "Не удалось загрузить историю рефералов");
   }
 });
 
