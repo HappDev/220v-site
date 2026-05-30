@@ -324,6 +324,7 @@
   gap: 12px;
 }
 .landing-root .logo--footer .logo__img { height: 128px; margin: -28px 0; }
+.landing-root--with-sidebar .logo--footer { display: none; }
 .landing-root .footer__links {
   display: flex;
   flex-wrap: wrap;
