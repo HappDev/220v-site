@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronRight, GitBranch } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
 import AdminPageShell from "@/components/AdminPageShell";
 import { Badge } from "@/components/ui/badge";
@@ -269,8 +269,8 @@ function DailyRegistrationsChart({ data }: { data: DailyRegistration[] }) {
       {data.length === 0 ? (
         <p className="text-sm text-muted-foreground">Нет регистраций за выбранный период</p>
       ) : (
-        <ChartContainer config={DAILY_REGISTRATIONS_CHART_CONFIG} className="min-h-[260px] w-full">
-          <BarChart data={data} margin={{ left: 8, right: 8, top: 12 }}>
+        <ChartContainer config={DAILY_REGISTRATIONS_CHART_CONFIG} className="h-[130px] w-full">
+          <LineChart data={data} margin={{ left: 8, right: 8, top: 12 }}>
             <CartesianGrid vertical={false} />
             <XAxis dataKey="date" tickFormatter={formatChartDate} tickLine={false} axisLine={false} minTickGap={24} />
             <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
@@ -281,9 +281,21 @@ function DailyRegistrationsChart({ data }: { data: DailyRegistration[] }) {
                 />
               }
             />
-            <Bar dataKey="registrations" fill="var(--color-registrations)" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="suspicious" fill="var(--color-suspicious)" radius={[4, 4, 0, 0]} />
-          </BarChart>
+            <Line
+              type="monotone"
+              dataKey="registrations"
+              stroke="var(--color-registrations)"
+              strokeWidth={2}
+              dot={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="suspicious"
+              stroke="var(--color-suspicious)"
+              strokeWidth={2}
+              dot={false}
+            />
+          </LineChart>
         </ChartContainer>
       )}
     </section>
