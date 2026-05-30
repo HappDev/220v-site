@@ -136,6 +136,7 @@ function paymentTypeToLabel(type) {
 }
 
 const RMW_META_CACHE_TTL_MS = 5 * 60 * 1000;
+const PROFILE_ENRICH_TIMEOUT_MS = 3_500;
 let rmwMetaCache = { fetchedAtMs: 0, payments: null, products: null };
 
 async function fetchRmwJsonList({ rmwUrl, rmwKey, path }) {
@@ -240,7 +241,7 @@ function assertValidUuid(uuid) {
   return uuid.trim();
 }
 
-async function fetchRmwHwidDevices(rmwUrl, rmwKey, userUuid) {
+async function fetchRmwHwidDevices(rmwUrl, rmwKey, userUuid, timeoutMs) {
   const uuid = assertValidUuid(userUuid);
   if (!rmwUrl || !rmwKey) return null;
   try {
@@ -253,6 +254,7 @@ async function fetchRmwHwidDevices(rmwUrl, rmwKey, userUuid) {
           "X-Api-Key": rmwKey,
         },
       },
+      timeoutMs,
     );
     if (!r.ok) return null;
     const data = await r.json();
@@ -264,21 +266,25 @@ async function fetchRmwHwidDevices(rmwUrl, rmwKey, userUuid) {
   }
 }
 
-async function applyRmwDeviceCount(rmwUrl, rmwKey, userUuid, userResponse) {
-  const hw = await fetchRmwHwidDevices(rmwUrl, rmwKey, userUuid);
+async function applyRmwDeviceCount(rmwUrl, rmwKey, userUuid, userResponse, timeoutMs) {
+  const hw = await fetchRmwHwidDevices(rmwUrl, rmwKey, userUuid, timeoutMs);
   if (hw && userResponse?.user) {
     userResponse.user.currentDevices = hw.total;
   }
 }
 
-async function enrichSubscriptionUrlFromPanel(baseUrl, headers, existingUser, userResponse) {
+async function enrichSubscriptionUrlFromPanel(baseUrl, headers, existingUser, userResponse, timeoutMs) {
   const short = existingUser.shortUuid || existingUser.short_uuid;
   if (!short) return;
   try {
-    const subRes = await fetchWithTimeout(`${baseUrl}/api/subscriptions/by-uuid/${short}`, {
-      method: "GET",
-      headers,
-    });
+    const subRes = await fetchWithTimeout(
+      `${baseUrl}/api/subscriptions/by-uuid/${short}`,
+      {
+        method: "GET",
+        headers,
+      },
+      timeoutMs,
+    );
     if (subRes.ok) {
       const subData = await subRes.json();
       const sub = subData.response || subData;
@@ -524,7 +530,13 @@ async function loadUserProfileForEmail(normalizedEmail, req, refUuid) {
   }
 
   if (isDashboardUserPayload(sessionData)) {
-    await applyRmwDeviceCount(rmwUrl, rmwKey, sessionData.user.userUuid, sessionData);
+    await applyRmwDeviceCount(
+      rmwUrl,
+      rmwKey,
+      sessionData.user.userUuid,
+      sessionData,
+      PROFILE_ENRICH_TIMEOUT_MS,
+    );
     applyTariffLabelToDashboardUser(sessionData.user);
     return sessionData;
   }
@@ -539,10 +551,21 @@ async function loadUserProfileForEmail(normalizedEmail, req, refUuid) {
   const { panelUser, exists } = extracted;
   const userResponse = buildUserResponse(panelUser, exists);
   const uuid = userResponse.user.userUuid;
-  await applyRmwDeviceCount(rmwUrl, rmwKey, uuid, userResponse);
+  const enrichTasks = [
+    applyRmwDeviceCount(rmwUrl, rmwKey, uuid, userResponse, PROFILE_ENRICH_TIMEOUT_MS),
+  ];
   if (token && panelHeaders) {
-    await enrichSubscriptionUrlFromPanel(baseUrl, panelHeaders, panelUser, userResponse);
+    enrichTasks.push(
+      enrichSubscriptionUrlFromPanel(
+        baseUrl,
+        panelHeaders,
+        panelUser,
+        userResponse,
+        PROFILE_ENRICH_TIMEOUT_MS,
+      ),
+    );
   }
+  await Promise.all(enrichTasks);
   return userResponse;
 }
 

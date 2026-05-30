@@ -30,11 +30,12 @@ import {
 import {
   acquireOtpCooldown,
   clearOtpAndCooldown,
-  consumeOtp,
+  deleteOtp,
   getCooldownDebugSnapshot,
   getOtpCooldownRemainingSec,
   getOtpDebugSnapshot,
   putOtp,
+  verifyOtp,
 } from "./otp.mjs";
 import { sendCodeSchema, verifySchema } from "./schemas.mjs";
 import { recordReferralEvent } from "../referrals/events.mjs";
@@ -169,7 +170,7 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
       }
       const { email, code } = parsed.data;
 
-      const otpResult = await consumeOtp(email, code);
+      const otpResult = await verifyOtp(email, code);
       if (!otpResult.ok) {
         const eventMap = {
           missing: "verify_code_missing",
@@ -236,6 +237,7 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
 
       await saveSession(sid, { userUuid, email, csrf, expAt });
       setSessionCookies(res, sid, csrf);
+      await deleteOtp(email);
 
       req.log.info(
         { emailHash: emailHash(email), userUuidPrefix: userUuid.slice(0, 8) },

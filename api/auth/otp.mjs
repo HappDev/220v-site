@@ -93,7 +93,7 @@ return 1
 /**
  * @returns {Promise<{ ok: true } | { ok: false, reason: string, status: number, tries?: number }>}
  */
-export async function consumeOtp(email, code) {
+export async function verifyOtp(email, code) {
   const key = otpKey(email);
   const raw = await redis.get(key);
   if (!raw) {
@@ -127,6 +127,19 @@ export async function consumeOtp(email, code) {
     return { ok: false, reason: "bad_code", status: 400, tries };
   }
 
-  await redis.del(key);
+  return { ok: true };
+}
+
+export async function deleteOtp(email) {
+  await redis.del(otpKey(email));
+}
+
+/**
+ * @returns {Promise<{ ok: true } | { ok: false, reason: string, status: number, tries?: number }>}
+ */
+export async function consumeOtp(email, code) {
+  const result = await verifyOtp(email, code);
+  if (!result.ok) return result;
+  await deleteOtp(email);
   return { ok: true };
 }

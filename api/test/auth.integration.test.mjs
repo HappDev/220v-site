@@ -1,6 +1,5 @@
-import { describe, it, before, beforeEach, after } from "node:test";
+import { describe, it, before, beforeEach, afterEach, after } from "node:test";
 import assert from "node:assert/strict";
-import request from "supertest";
 
 process.env.NODE_ENV = "test";
 process.env.COOKIE_SECURE = "false";
@@ -18,6 +17,45 @@ const { redis } = await import("../redis.mjs");
 const { hashCode } = await import("../auth/crypto.mjs");
 const { otpCooldownKey, otpKey } = await import("../auth/keys.mjs");
 const { acquireOtpCooldown, clearOtpAndCooldown, putOtp } = await import("../auth/otp.mjs");
+const originalFetch = globalThis.fetch;
+
+async function withTestServer(fn) {
+  const server = await new Promise((resolve, reject) => {
+    const instance = app.listen(0, "127.0.0.1", () => resolve(instance));
+    instance.on("error", reject);
+  });
+  try {
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    return await fn(`http://127.0.0.1:${port}`);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+  }
+}
+
+async function requestJson(method, path, body) {
+  return withTestServer(async (baseUrl) => {
+    const res = await originalFetch(`${baseUrl}${path}`, {
+      method,
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await res.text();
+    let parsedBody = {};
+    try {
+      parsedBody = text ? JSON.parse(text) : {};
+    } catch {
+      parsedBody = { text };
+    }
+    return {
+      status: res.status,
+      body: parsedBody,
+      headers: res.headers,
+    };
+  });
+}
 
 describe("auth integration", () => {
   before(async () => {
@@ -26,6 +64,11 @@ describe("auth integration", () => {
 
   beforeEach(async () => {
     await redis.flushall();
+    globalThis.fetch = originalFetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   after(async () => {
@@ -33,12 +76,12 @@ describe("auth integration", () => {
   });
 
   it("GET /api/me without cookie returns 401", async () => {
-    const res = await request(app).get("/api/me");
+    const res = await requestJson("GET", "/api/me");
     assert.equal(res.status, 401);
   });
 
   it("GET /api/health returns ok", async () => {
-    const res = await request(app).get("/api/health");
+    const res = await requestJson("GET", "/api/health");
     assert.equal(res.status, 200);
     assert.equal(res.body.ok, true);
   });
@@ -53,9 +96,7 @@ describe("auth integration", () => {
       600,
     );
 
-    const res = await request(app)
-      .post("/api/auth/verify")
-      .send({ email, code: "00000" });
+    const res = await requestJson("POST", "/api/auth/verify", { email, code: "00000" });
 
     assert.equal(res.status, 400);
   });
@@ -87,8 +128,52 @@ describe("auth integration", () => {
     assert.equal(await redis.get(otpCooldownKey(email)), "owner-new");
   });
 
+  it("keeps a correct OTP retryable when profile load fails", async () => {
+    const email = "retry@example.com";
+    const code = "12345";
+    const userUuid = "b6810e6c-8a69-42b1-b298-8b07d8378987";
+    await putOtp(email, hashCode(code), "test-owner");
+
+    let sessionAttempts = 0;
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      if (href.endsWith("/v1/auth/session")) {
+        sessionAttempts += 1;
+        if (sessionAttempts === 1) {
+          const err = new Error("profile timed out");
+          err.isTimeout = true;
+          err.timeoutMs = 8000;
+          throw err;
+        }
+        return Response.json({
+          exists: true,
+          user: {
+            userUuid,
+            plan: "Premium",
+            tariff: "1month",
+          },
+        });
+      }
+      if (href.includes("/v1/hwid/devices/")) {
+        return Response.json({ devices: [], total: 0 });
+      }
+      throw new Error(`Unexpected fetch: ${href}`);
+    };
+
+    const first = await requestJson("POST", "/api/auth/verify", { email, code });
+
+    assert.equal(first.status, 504);
+    assert.ok(await redis.get(otpKey(email)));
+
+    const second = await requestJson("POST", "/api/auth/verify", { email, code });
+
+    assert.equal(second.status, 200);
+    assert.equal(second.body.user.userUuid, userUuid);
+    assert.equal(await redis.get(otpKey(email)), null);
+  });
+
   it("DELETE /api/me/devices/x without session returns 401", async () => {
-    const res = await request(app).delete("/api/me/devices/hwid-1");
+    const res = await requestJson("DELETE", "/api/me/devices/hwid-1");
     assert.equal(res.status, 401);
   });
 });
