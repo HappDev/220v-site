@@ -187,7 +187,11 @@ const Referrals = () => {
     }
     const started = getReferralsProgramStarted(userUuid);
     setProgramStarted(started);
-    if (started) setLoading(true);
+    // Не трогаем здесь `loading`: им управляет только fetchHistory. Иначе повторный
+    // прогон этого эффекта (например, когда useDashboardSidebarItems переключает
+    // userLoading после своего /api/me) снова взводит loading=true уже после того,
+    // как запрос истории завершился, а второй эффект не перезапрашивает — и спиннер
+    // зависает навсегда (особенно при пустой истории).
     setStartedReady(true);
   }, [userLoading, userUuid]);
 
