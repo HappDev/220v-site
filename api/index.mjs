@@ -138,6 +138,7 @@ function paymentTypeToLabel(type) {
 const RMW_META_CACHE_TTL_MS = 5 * 60 * 1000;
 const PROFILE_ENRICH_TIMEOUT_MS = 3_500;
 let rmwMetaCache = { fetchedAtMs: 0, payments: null, products: null };
+const rmwUserEmailCache = new Map();
 
 async function fetchRmwJsonList({ rmwUrl, rmwKey, path }) {
   const r = await fetchWithTimeout(`${rmwUrl}${path}`, {
@@ -165,6 +166,81 @@ async function fetchRmwJsonList({ rmwUrl, rmwKey, path }) {
   }
 
   return data;
+}
+
+function extractRmwUserEmail(payload) {
+  if (!payload || typeof payload !== "object") return "";
+
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const email = extractRmwUserEmail(item);
+      if (email) return email;
+    }
+    return "";
+  }
+
+  for (const key of ["email", "userEmail", "user_email"]) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  for (const key of ["user", "response", "data"]) {
+    const email = extractRmwUserEmail(payload[key]);
+    if (email) return email;
+  }
+
+  return "";
+}
+
+async function fetchRmwUserEmail(userUuid) {
+  const uuid = assertValidUuid(userUuid);
+  const cached = rmwUserEmailCache.get(uuid);
+  const now = Date.now();
+  if (cached && now - cached.fetchedAtMs < RMW_META_CACHE_TTL_MS) {
+    return cached.email;
+  }
+
+  const rmwUrl = rmwBaseUrl();
+  const rmwKey = rmwApiKey();
+  if (!rmwUrl || !rmwKey) {
+    const err = new Error("RMW not configured");
+    err.status = 500;
+    throw err;
+  }
+
+  const r = await fetchWithTimeout(
+    `${rmwUrl}/v1/users/${encodeURIComponent(uuid)}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": rmwKey,
+      },
+    },
+    PROFILE_ENRICH_TIMEOUT_MS,
+  );
+
+  const text = await r.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    const err = new Error("Invalid JSON from RMW");
+    err.status = 502;
+    throw err;
+  }
+
+  if (!r.ok) {
+    const err = new Error("RMW user lookup failed");
+    err.status = r.status >= 400 && r.status < 600 ? r.status : 502;
+    throw err;
+  }
+
+  const email = extractRmwUserEmail(data);
+  rmwUserEmailCache.set(uuid, { fetchedAtMs: now, email });
+  return email;
 }
 
 async function getRmwBillingMeta({ allowCache = true } = {}) {
@@ -715,6 +791,20 @@ app.get("/api/admin/referrals/summary", requireAdminToken, async (req, res) => {
     return res.json(buildReferralSummary(events, { days, recentEventLimit: Math.min(200, limit) }));
   } catch (err) {
     return serverError(res, req, err);
+  }
+});
+
+app.get("/api/admin/referrals/users/:uuid", requireAdminToken, async (req, res) => {
+  try {
+    const uuid = assertValidUuid(req.params.uuid);
+    const email = await fetchRmwUserEmail(uuid);
+    return res.json({ uuid, email: email || null });
+  } catch (err) {
+    if (err?.message === "Invalid user UUID") {
+      return clientError(res, 400, "Некорректный UUID пользователя");
+    }
+    const status = err.status || 502;
+    return clientError(res, status, "Не удалось загрузить email пользователя из RMW");
   }
 });
 

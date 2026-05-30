@@ -1,4 +1,4 @@
-import { describe, it, before, beforeEach, after } from "node:test";
+import { describe, it, before, beforeEach, afterEach, after } from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
 
@@ -17,6 +17,7 @@ process.env.RMW_API_KEY = "test-key";
 const { app } = await import("../index.mjs");
 const { redis } = await import("../redis.mjs");
 const { refEventsListKey } = await import("../auth/keys.mjs");
+const originalFetch = globalThis.fetch;
 
 const REF_A = "11111111-1111-1111-8111-111111111111";
 const REF_B = "22222222-2222-2222-8222-222222222222";
@@ -57,6 +58,11 @@ describe("referral admin summary", () => {
 
   beforeEach(async () => {
     await redis.flushall();
+    globalThis.fetch = originalFetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   after(async () => {
@@ -160,5 +166,23 @@ describe("referral admin summary", () => {
     const limited = await getSummary("?days=all&limit=1");
     assert.equal(limited.status, 200);
     assert.equal(limited.body.totals.events, 1);
+  });
+
+  it("returns referrer email from RMW by UUID", async () => {
+    globalThis.fetch = async (url, options) => {
+      assert.equal(url, `${process.env.RMW_API_URL}/v1/users/${REF_A}`);
+      assert.equal(options.headers["X-Api-Key"], process.env.RMW_API_KEY);
+      return new Response(
+        JSON.stringify({ user: { uuid: REF_A, email: "referrer@example.com" } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    const res = await request(app)
+      .get(`/api/admin/referrals/users/${REF_A}`)
+      .set("X-Admin-Token", "admin-test-token");
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body, { uuid: REF_A, email: "referrer@example.com" });
   });
 });

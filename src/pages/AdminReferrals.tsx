@@ -63,6 +63,12 @@ type ReferrerRisk = {
   events: ReferralEvent[];
 };
 
+type ReferrerUserLookup = {
+  loading: boolean;
+  email?: string | null;
+  error?: string;
+};
+
 type ReferralSummary = {
   generatedAt: string;
   window: { days: number | null; since: string | null; until: string };
@@ -208,7 +214,40 @@ function WarningList({ warnings }: { warnings: ReferralWarning[] }) {
   );
 }
 
-function ReferrerTable({ items, eventType }: { items: ReferrerRisk[]; eventType: string }) {
+function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eventType: string; token: string }) {
+  const [userLookups, setUserLookups] = useState<Record<string, ReferrerUserLookup>>({});
+
+  const loadUserEmail = useCallback(
+    async (uuid: string) => {
+      const existing = userLookups[uuid];
+      if (existing?.loading || existing?.email !== undefined || existing?.error) return;
+
+      setUserLookups((prev) => ({ ...prev, [uuid]: { loading: true } }));
+      try {
+        const res = await fetch(`${apiBase}/admin/referrals/users/${encodeURIComponent(uuid)}`, {
+          headers: { "X-Admin-Token": token.trim() },
+          credentials: "include",
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message =
+            body && typeof body === "object" && "error" in body && typeof body.error === "string"
+              ? body.error
+              : `Ошибка ${res.status}`;
+          throw new Error(message);
+        }
+        const email =
+          body && typeof body === "object" && "email" in body && typeof body.email === "string"
+            ? body.email
+            : null;
+        setUserLookups((prev) => ({ ...prev, [uuid]: { loading: false, email } }));
+      } catch (err) {
+        setUserLookups((prev) => ({ ...prev, [uuid]: { loading: false, error: asErrorMessage(err) } }));
+      }
+    },
+    [token, userLookups],
+  );
+
   return (
     <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
       <div className="mb-3 flex items-center gap-2">
@@ -237,7 +276,12 @@ function ReferrerTable({ items, eventType }: { items: ReferrerRisk[]; eventType:
               return (
                 <TableRow key={item.referrerUuid}>
                   <TableCell colSpan={7} className="p-0">
-                    <details className="group">
+                    <details
+                      className="group"
+                      onToggle={(event) => {
+                        if (event.currentTarget.open) void loadUserEmail(item.referrerUuid);
+                      }}
+                    >
                       <summary className="grid cursor-pointer list-none grid-cols-1 gap-3 p-4 text-sm hover:bg-muted/50 md:grid-cols-[minmax(210px,1.5fr)_110px_80px_minmax(170px,1fr)_minmax(150px,1fr)_minmax(220px,1.5fr)_130px] [&::-webkit-details-marker]:hidden">
                         <span className="break-all font-mono text-xs font-semibold text-foreground">
                           {item.referrerUuid}
@@ -257,7 +301,15 @@ function ReferrerTable({ items, eventType }: { items: ReferrerRisk[]; eventType:
                         <span className="text-xs text-muted-foreground">{formatDate(item.lastSeen)}</span>
                       </summary>
                       <div className="border-t border-border bg-muted/20 p-4">
-                        <div className="mb-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                        <div className="mb-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                          <div className="break-all">
+                            Email:{" "}
+                            {userLookups[item.referrerUuid]?.loading
+                              ? "загрузка..."
+                              : userLookups[item.referrerUuid]?.error ||
+                                userLookups[item.referrerUuid]?.email ||
+                                "—"}
+                          </div>
                           <div>Email hashes: {item.unique.referredEmailHashes}</div>
                           <div>User prefixes: {item.unique.referredUuidPrefixes}</div>
                           <div>Credit skipped: {item.counts.creditSkipped}</div>
@@ -486,7 +538,7 @@ export default function AdminReferrals() {
             </div>
           </section>
 
-          <ReferrerTable items={filteredReferrers} eventType={eventType} />
+          <ReferrerTable items={filteredReferrers} eventType={eventType} token={token} />
 
           <div className="grid gap-5 lg:grid-cols-3">
             <CounterList title="Top IP hashes" items={summary.topIps} />
