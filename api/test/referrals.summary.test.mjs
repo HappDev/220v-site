@@ -75,6 +75,7 @@ describe("referral admin summary", () => {
   });
 
   it("returns totals, funnel, and sorted risky referrers", async () => {
+    const today = new Date().toISOString().slice(0, 10);
     await seedEvents([
       event({ type: "ref_click", referrerUuid: REF_A }),
       event({ type: "ref_send_code", referrerUuid: REF_A, referredEmailHash: "email-a" }),
@@ -96,6 +97,10 @@ describe("referral admin summary", () => {
     assert.equal(res.body.referrers[0].referrerUuid, REF_A);
     assert.equal(res.body.referrers[0].riskLevel, "critical");
     assert.ok(res.body.referrers[0].warnings.some((warning) => warning.code === "self_referral"));
+    assert.deepEqual(
+      res.body.dailyRegistrations.find((item) => item.date === today),
+      { date: today, registrations: 1, suspicious: 1 },
+    );
   });
 
   it("marks repeated fingerprint identities as critical", async () => {

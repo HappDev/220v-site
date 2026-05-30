@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronRight, GitBranch } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import AdminPageShell from "@/components/AdminPageShell";
 import { Badge } from "@/components/ui/badge";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ADMIN_TOKEN_STORAGE_KEY } from "@/lib/admin";
@@ -45,6 +47,12 @@ type ReferralWarning = {
   label: string;
   severity: RiskLevel;
   evidence: Record<string, unknown>;
+};
+
+type DailyRegistration = {
+  date: string;
+  registrations: number;
+  suspicious: number;
 };
 
 type ReferrerRisk = {
@@ -114,6 +122,7 @@ type ReferralSummary = {
   topIps: CounterEntry[];
   topUserAgents: CounterEntry[];
   topFingerprints: CounterEntry[];
+  dailyRegistrations: DailyRegistration[];
   events: ReferralEvent[];
 };
 
@@ -146,6 +155,17 @@ const EVENT_FILTERS = [
 
 const HISTORY_PAGE_SIZE = 20;
 
+const DAILY_REGISTRATIONS_CHART_CONFIG = {
+  registrations: {
+    label: "Регистрации",
+    color: "hsl(var(--primary))",
+  },
+  suspicious: {
+    label: "Подозрительные",
+    color: "hsl(var(--destructive))",
+  },
+} satisfies ChartConfig;
+
 function formatDate(value?: string | null) {
   if (!value) return "—";
   const date = new Date(value);
@@ -173,6 +193,12 @@ function formatReferralPointReason(item: ReferralPointItem): string {
     return `Оплата тарифа реферала${suffix}${first}`;
   }
   return item.reason || "—";
+}
+
+function formatChartDate(value: string) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
 }
 
 function riskClass(level: RiskLevel) {
@@ -216,6 +242,49 @@ function CounterList({ title, items }: { title: string; items: CounterEntry[] })
             </div>
           ))}
         </div>
+      )}
+    </section>
+  );
+}
+
+function DailyRegistrationsChart({ data }: { data: DailyRegistration[] }) {
+  const totalRegistrations = data.reduce((sum, item) => sum + item.registrations, 0);
+  const totalSuspicious = data.reduce((sum, item) => sum + item.suspicious, 0);
+
+  return (
+    <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-foreground">Регистрации рефералов по дням</h2>
+          <p className="text-sm text-muted-foreground">
+            Подозрительные — регистрации от рефереров с риском medium и выше.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="secondary">Всего: {totalRegistrations}</Badge>
+          <Badge className="bg-destructive text-destructive-foreground">Подозрительные: {totalSuspicious}</Badge>
+        </div>
+      </div>
+
+      {data.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Нет регистраций за выбранный период</p>
+      ) : (
+        <ChartContainer config={DAILY_REGISTRATIONS_CHART_CONFIG} className="min-h-[260px] w-full">
+          <BarChart data={data} margin={{ left: 8, right: 8, top: 12 }}>
+            <CartesianGrid vertical={false} />
+            <XAxis dataKey="date" tickFormatter={formatChartDate} tickLine={false} axisLine={false} minTickGap={24} />
+            <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  labelFormatter={(value) => (typeof value === "string" ? formatChartDate(value) : value)}
+                />
+              }
+            />
+            <Bar dataKey="registrations" fill="var(--color-registrations)" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="suspicious" fill="var(--color-suspicious)" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ChartContainer>
       )}
     </section>
   );
@@ -733,6 +802,8 @@ export default function AdminReferrals() {
               ))}
             </div>
           </section>
+
+          <DailyRegistrationsChart data={summary.dailyRegistrations || []} />
 
           <ReferrerTable items={filteredReferrers} eventType={eventType} token={token} />
 

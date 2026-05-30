@@ -105,6 +105,43 @@ function compactEvent(event) {
   };
 }
 
+function dateKey(value) {
+  const timestamp = Date.parse(value || "");
+  if (!Number.isFinite(timestamp)) return null;
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function buildDailyRegistrationStats(events, { since, until, suspiciousReferrerUuids }) {
+  const byDay = new Map();
+  let firstRegistrationDay = null;
+
+  for (const event of events) {
+    if (event.type !== "ref_verify_ok") continue;
+    const day = dateKey(event.at);
+    if (!day) continue;
+    if (!firstRegistrationDay || day < firstRegistrationDay) firstRegistrationDay = day;
+
+    const current = byDay.get(day) || { date: day, registrations: 0, suspicious: 0 };
+    current.registrations += 1;
+    if (suspiciousReferrerUuids.has(event.referrerUuid)) current.suspicious += 1;
+    byDay.set(day, current);
+  }
+
+  const startDay = since ? since.toISOString().slice(0, 10) : firstRegistrationDay;
+  const endDay = until.toISOString().slice(0, 10);
+  if (!startDay) return [];
+
+  const result = [];
+  const cursor = new Date(`${startDay}T00:00:00.000Z`);
+  const end = new Date(`${endDay}T00:00:00.000Z`);
+  while (cursor <= end) {
+    const day = cursor.toISOString().slice(0, 10);
+    result.push(byDay.get(day) || { date: day, registrations: 0, suspicious: 0 });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return result;
+}
+
 function scoreReferrer(group) {
   const warnings = [];
   let riskLevel = "none";
@@ -386,6 +423,17 @@ export function buildReferralSummary(events, opts = {}) {
     none: referrers.filter((r) => r.riskLevel === "none").length,
   };
 
+  const suspiciousReferrerUuids = new Set(
+    referrers
+      .filter((referrer) => RISK_ORDER[referrer.riskLevel] >= RISK_ORDER.medium)
+      .map((referrer) => referrer.referrerUuid),
+  );
+  const dailyRegistrations = buildDailyRegistrationStats(filtered, {
+    since,
+    until: now,
+    suspiciousReferrerUuids,
+  });
+
   return {
     generatedAt: now.toISOString(),
     window: {
@@ -400,6 +448,7 @@ export function buildReferralSummary(events, opts = {}) {
     topIps: sortedCounters(ipCounts, topLimit),
     topUserAgents: sortedCounters(uaCounts, topLimit),
     topFingerprints: sortedCounters(fingerprintCounts, topLimit),
+    dailyRegistrations,
     events: filtered.slice(0, recentEventLimit).map(compactEvent),
   };
 }
