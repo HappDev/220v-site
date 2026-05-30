@@ -116,6 +116,18 @@ const screenshotsByPlatform: Partial<Record<Platform, string[]>> = {
   androidtv: [tv1, tv2],
 };
 
+const DOWNLOAD_LINKS = {
+  windowsX64: "https://files-hub.com/download/windows/latest?arch=x64",
+  macosUniversal: "https://files-hub.com/download/macos/latest?arch=universal",
+  linuxX64Deb: "https://files-hub.com/download/linux/latest?arch=x64&package=deb",
+  linuxX64Pkg: "https://files-hub.com/download/linux/latest?arch=x64&package=pkg",
+  linuxX64Rpm: "https://files-hub.com/download/linux/latest?arch=x64&package=rpm",
+  linuxArm64Deb: "https://files-hub.com/download/linux/latest?arch=arm64&package=deb",
+  linuxArm64Pkg: "https://files-hub.com/download/linux/latest?arch=arm64&package=pkg",
+  linuxArm64Rpm: "https://files-hub.com/download/linux/latest?arch=arm64&package=rpm",
+  androidApk: "https://files-hub.com/download/android/latest?arch=universal",
+} as const;
+
 const CopySubscriptionLink = ({ subscriptionUrl }: { subscriptionUrl?: string }) => {
   const btnRef = useRef<HTMLButtonElement>(null);
 
@@ -380,7 +392,7 @@ const Instructions = () => {
           Установи Happ из{" "}
           <ExternalLink href="https://play.google.com/store/apps/details?id=com.happproxy">Google Play</ExternalLink>{" "}
           или{" "}
-          <ExternalLink href="https://disk.yandex.ru/d/u_d6cVaTVnyWuw">скачай APK</ExternalLink>.
+          <ExternalLink href={DOWNLOAD_LINKS.androidApk}>скачай APK</ExternalLink>.
         </Step>
         <Step n={2}>
           Нажми <CopySubscriptionLink subscriptionUrl={subscriptionUrl} /> или отсканируй{" "}
@@ -399,7 +411,9 @@ const Instructions = () => {
       <div className="flex flex-col gap-3">
         <Step n={1}>
           Установи{" "}
-          <ExternalLink href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973">Happ</ExternalLink> из App Store.
+          <ExternalLink href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973">Happ</ExternalLink> из App Store{" "}
+          или{" "}
+          <ExternalLink href={DOWNLOAD_LINKS.macosUniversal}>скачай версию для macOS</ExternalLink>.
         </Step>
         <Step n={2}>
           Нажми <CopySubscriptionLink subscriptionUrl={subscriptionUrl} /> или отсканируй{" "}
@@ -418,7 +432,7 @@ const Instructions = () => {
       <div className="flex flex-col gap-3">
         <Step n={1}>
           Скачай и установи{" "}
-          <ExternalLink href="https://disk.yandex.ru/d/16xq7Y-keHg1nQ">инсталлятор</ExternalLink>.
+          <ExternalLink href={DOWNLOAD_LINKS.windowsX64}>инсталлятор</ExternalLink>.
         </Step>
         <Step n={2}>
           Нажми <CopySubscriptionLink subscriptionUrl={subscriptionUrl} />.
@@ -435,10 +449,13 @@ const Instructions = () => {
       <div className="flex flex-col gap-3">
         <Step n={1}>
           Скачай пакет для своей системы и установи его:{" "}
-          <ExternalLink href="https://disk.yandex.ru/d/GoscFb_zsFYN8A">.deb</ExternalLink>,{" "}
-          <ExternalLink href="https://disk.yandex.ru/d/SB06qEHDMPFY0A">.rpm</ExternalLink>{" "}
-          или{" "}
-          <ExternalLink href="https://disk.yandex.ru/d/cOTi2cIomWiq8A">.pkg</ExternalLink>.
+          x64{" "}
+          <ExternalLink href={DOWNLOAD_LINKS.linuxX64Deb}>.deb</ExternalLink>,{" "}
+          <ExternalLink href={DOWNLOAD_LINKS.linuxX64Rpm}>.rpm</ExternalLink>,{" "}
+          <ExternalLink href={DOWNLOAD_LINKS.linuxX64Pkg}>.pkg</ExternalLink>; arm64{" "}
+          <ExternalLink href={DOWNLOAD_LINKS.linuxArm64Deb}>.deb</ExternalLink>,{" "}
+          <ExternalLink href={DOWNLOAD_LINKS.linuxArm64Rpm}>.rpm</ExternalLink>,{" "}
+          <ExternalLink href={DOWNLOAD_LINKS.linuxArm64Pkg}>.pkg</ExternalLink>.
         </Step>
         <Step n={2}>
           Нажми <CopySubscriptionLink subscriptionUrl={subscriptionUrl} />.
@@ -472,7 +489,7 @@ const Instructions = () => {
       <div className="flex flex-col gap-3">
         <Step n={1}>
           Установи Happ из{" "}
-          <ExternalLink href="https://play.google.com/store/apps/details?id=com.happproxy">Google Play</ExternalLink> или <ExternalLink href="https://disk.yandex.ru/d/u_d6cVaTVnyWuw">скачай APK</ExternalLink>.
+          <ExternalLink href="https://play.google.com/store/apps/details?id=com.happproxy">Google Play</ExternalLink> или <ExternalLink href={DOWNLOAD_LINKS.androidApk}>скачай APK</ExternalLink>.
         </Step>
         <Step n={2}>
           Запусти приложение на ТВ — на экране появится QR-код.
@@ -496,7 +513,7 @@ const Instructions = () => {
         Установи Happ из{" "}
         <ExternalLink href="https://play.google.com/store/apps/details?id=com.happproxy">Google Play</ExternalLink>{" "}
         или{" "}
-        <ExternalLink href="https://disk.yandex.ru/d/u_d6cVaTVnyWuw">скачай APK</ExternalLink>.
+        <ExternalLink href={DOWNLOAD_LINKS.androidApk}>скачай APK</ExternalLink>.
       </Step>
       <Step n={2}>
         Нажми кнопку
@@ -512,7 +529,9 @@ const Instructions = () => {
     <div className="flex flex-col gap-3">
       <Step n={1}>
         Установи{" "}
-        <ExternalLink href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973">Happ</ExternalLink> из App Store.
+        <ExternalLink href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973">Happ</ExternalLink> из App Store{" "}
+        или{" "}
+        <ExternalLink href={DOWNLOAD_LINKS.macosUniversal}>скачай версию для macOS</ExternalLink>.
       </Step>
       <Step n={2}>
         Нажми кнопку
