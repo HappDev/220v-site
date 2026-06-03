@@ -287,7 +287,7 @@ async function fetchRmwReferralPoints(userUuid, { page, limit }) {
   return data;
 }
 
-async function debitRmwReferralPoints(userUuid, { amount, comment }) {
+async function debitRmwReferralPoints(userUuid, { amount, comment, force = false }) {
   const uuid = assertValidUuid(userUuid);
   const rmwUrl = rmwBaseUrl();
   const rmwKey = rmwApiKey();
@@ -295,6 +295,11 @@ async function debitRmwReferralPoints(userUuid, { amount, comment }) {
     const err = new Error("RMW not configured");
     err.status = 500;
     throw err;
+  }
+
+  const payload = { amount, comment };
+  if (force === true) {
+    payload.force = true;
   }
 
   const r = await fetchWithTimeout(
@@ -305,7 +310,7 @@ async function debitRmwReferralPoints(userUuid, { amount, comment }) {
         "Content-Type": "application/json",
         "X-Api-Key": rmwKey,
       },
-      body: JSON.stringify({ amount, comment }),
+      body: JSON.stringify(payload),
     },
   );
 
@@ -927,7 +932,7 @@ app.post("/api/admin/referrals/users/:uuid/points/debit", requireAdminToken, asy
       return clientError(res, 400, "Укажите причину списания");
     }
 
-    const data = await debitRmwReferralPoints(uuid, { amount, comment });
+    const data = await debitRmwReferralPoints(uuid, { amount, comment, force: req.body?.force === true });
     return res.json(data);
   } catch (err) {
     if (err?.message === "Invalid user UUID") {

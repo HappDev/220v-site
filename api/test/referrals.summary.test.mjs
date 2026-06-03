@@ -359,7 +359,7 @@ describe("referral admin summary", () => {
       assert.equal(url, `${process.env.RMW_API_URL}/v1/users/${REF_A}/referral-points/debit`);
       assert.equal(options.method, "POST");
       assert.equal(options.headers["X-Api-Key"], process.env.RMW_API_KEY);
-      assert.deepEqual(JSON.parse(options.body), { amount: 7, comment: "fraud adjustment" });
+      assert.deepEqual(JSON.parse(options.body), { amount: 7, comment: "fraud adjustment", force: true });
       return new Response(
         JSON.stringify({
           balance: 8,
@@ -378,7 +378,7 @@ describe("referral admin summary", () => {
     const res = await request(app)
       .post(`/api/admin/referrals/users/${REF_A}/points/debit`)
       .set("X-Admin-Token", "admin-test-token")
-      .send({ amount: 7, comment: "fraud adjustment" });
+      .send({ amount: 7, comment: "fraud adjustment", force: true });
 
     assert.equal(res.status, 200);
     assert.equal(res.body.balance, 8);
