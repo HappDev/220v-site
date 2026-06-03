@@ -88,6 +88,12 @@ type ReferrerUserLookup = {
   error?: string;
 };
 
+type ReferrerBalanceLookup = {
+  loading: boolean;
+  balance?: number | null;
+  error?: string;
+};
+
 type ReferralPointItem = {
   id: number | string;
   amount: number;
@@ -449,6 +455,7 @@ function WarningList({ warnings }: { warnings: ReferralWarning[] }) {
 
 function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eventType: string; token: string }) {
   const [userLookups, setUserLookups] = useState<Record<string, ReferrerUserLookup>>({});
+  const [balanceLookups, setBalanceLookups] = useState<Record<string, ReferrerBalanceLookup>>({});
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyUuid, setHistoryUuid] = useState("");
   const [historyData, setHistoryData] = useState<ReferralPointsResponse | null>(null);
@@ -490,6 +497,44 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
       }
     },
     [token, userLookups],
+  );
+
+  const loadUserBalance = useCallback(
+    async (uuid: string) => {
+      const existing = balanceLookups[uuid];
+      if (existing?.loading || existing?.balance !== undefined || existing?.error) return;
+
+      setBalanceLookups((prev) => ({ ...prev, [uuid]: { loading: true } }));
+      try {
+        const qs = new URLSearchParams({
+          page: "1",
+          limit: "1",
+        });
+        const res = await fetch(
+          `${apiBase}/admin/referrals/users/${encodeURIComponent(uuid)}/points?${qs}`,
+          {
+            headers: { "X-Admin-Token": token.trim() },
+            credentials: "include",
+          },
+        );
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message =
+            body && typeof body === "object" && "error" in body && typeof body.error === "string"
+              ? body.error
+              : `Ошибка ${res.status}`;
+          throw new Error(message);
+        }
+        const balance =
+          body && typeof body === "object" && "balance" in body && typeof body.balance === "number"
+            ? body.balance
+            : null;
+        setBalanceLookups((prev) => ({ ...prev, [uuid]: { loading: false, balance } }));
+      } catch (err) {
+        setBalanceLookups((prev) => ({ ...prev, [uuid]: { loading: false, error: asErrorMessage(err) } }));
+      }
+    },
+    [balanceLookups, token],
   );
 
   const loadReferralHistory = useCallback(
@@ -580,6 +625,7 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
         }
         const data = body as DebitReferralPointsResponse;
         toast.success(`Списано ${amount} баллов. Новый баланс: ${data.balance ?? "—"}`);
+        setBalanceLookups((prev) => ({ ...prev, [debitUuid]: { loading: false, balance: data.balance ?? null } }));
         setDebitOpen(false);
         if (historyUuid === debitUuid) {
           void loadReferralHistory(debitUuid, historyData?.page || 1);
@@ -632,7 +678,10 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
                       <details
                         className="group"
                         onToggle={(event) => {
-                          if (event.currentTarget.open) void loadUserEmail(item.referrerUuid);
+                          if (event.currentTarget.open) {
+                            void loadUserEmail(item.referrerUuid);
+                            void loadUserBalance(item.referrerUuid);
+                          }
                         }}
                       >
                         <summary
@@ -669,7 +718,7 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
                           </span>
                         </summary>
                         <div className="border-t border-border bg-muted/20 p-4">
-                          <div className="mb-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                          <div className="mb-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-5">
                             <div className="min-w-0">
                               Email:{" "}
                               {userLookups[item.referrerUuid]?.loading ? (
@@ -683,6 +732,12 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
                               ) : (
                                 userLookups[item.referrerUuid]?.error || "—"
                               )}
+                            </div>
+                            <div>
+                              Баллы:{" "}
+                              {balanceLookups[item.referrerUuid]?.loading
+                                ? "загрузка..."
+                                : balanceLookups[item.referrerUuid]?.balance ?? balanceLookups[item.referrerUuid]?.error ?? "—"}
                             </div>
                             <div>Email hashes: {item.unique.referredEmailHashes}</div>
                             <div>User prefixes: {item.unique.referredUuidPrefixes}</div>
