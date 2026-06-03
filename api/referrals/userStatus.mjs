@@ -1,0 +1,77 @@
+import { randomUUID } from "node:crypto";
+
+import { redis } from "../redis.mjs";
+import { refUserStatusKey } from "../auth/keys.mjs";
+
+function normalizeBool(value) {
+  return value === true || value === "1" || value === "true";
+}
+
+function normalizeStatus(raw = {}) {
+  return {
+    penalized: normalizeBool(raw.penalized),
+    pointsBlocked: normalizeBool(raw.pointsBlocked),
+    penalizedAt: raw.penalizedAt || null,
+    pointsBlockedAt: raw.pointsBlockedAt || null,
+    lastDebitAt: raw.lastDebitAt || null,
+    lastDebitAmount: raw.lastDebitAmount ? Number(raw.lastDebitAmount) : null,
+    lastDebitComment: raw.lastDebitComment || null,
+    updatedAt: raw.updatedAt || null,
+  };
+}
+
+export async function getReferralUserStatus(referrerUuid) {
+  const raw = await redis.hgetall(refUserStatusKey(referrerUuid));
+  return normalizeStatus(raw);
+}
+
+export async function getReferralUserStatuses(referrerUuids) {
+  const uniqueUuids = [...new Set(referrerUuids.filter(Boolean))];
+  if (uniqueUuids.length === 0) return {};
+
+  const pipeline = redis.pipeline();
+  for (const uuid of uniqueUuids) {
+    pipeline.hgetall(refUserStatusKey(uuid));
+  }
+  const results = await pipeline.exec();
+
+  return Object.fromEntries(
+    uniqueUuids.map((uuid, index) => {
+      const [, raw] = results[index] || [];
+      return [uuid, normalizeStatus(raw || {})];
+    }),
+  );
+}
+
+export async function markReferralUserPenalized(referrerUuid, { amount, comment, pointsBlocked }) {
+  const now = new Date().toISOString();
+  const key = refUserStatusKey(referrerUuid);
+  const existing = await redis.hgetall(key);
+  const update = {
+    penalized: "1",
+    updatedAt: now,
+    lastDebitAt: now,
+    lastDebitId: randomUUID(),
+    lastDebitAmount: String(amount),
+    lastDebitComment: comment,
+  };
+
+  if (!existing.penalizedAt) {
+    update.penalizedAt = now;
+  }
+
+  if (pointsBlocked) {
+    update.pointsBlocked = "1";
+    if (!existing.pointsBlockedAt) {
+      update.pointsBlockedAt = now;
+    }
+  }
+
+  await redis.hset(key, update);
+  return getReferralUserStatus(referrerUuid);
+}
+
+export async function isReferralUserPointsBlocked(referrerUuid) {
+  const value = await redis.hget(refUserStatusKey(referrerUuid), "pointsBlocked");
+  return normalizeBool(value);
+}

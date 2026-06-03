@@ -14,6 +14,12 @@ import { isTimeoutError, publicMessageFromErr, timeoutStatusCode } from "./http/
 import { checkoutSessionLimiter, refClickIpLimiter } from "./http/rateLimit.mjs";
 import { recordReferralEvent, queryReferralEvents } from "./referrals/events.mjs";
 import { buildReferralRiskForReferrer, buildReferralSummary } from "./referrals/summary.mjs";
+import {
+  getReferralUserStatus,
+  getReferralUserStatuses,
+  isReferralUserPointsBlocked,
+  markReferralUserPenalized,
+} from "./referrals/userStatus.mjs";
 import { SESSION_COOKIE } from "./config.mjs";
 import { base64url } from "./auth/crypto.mjs";
 import { createAuthRouter } from "./auth/routes.mjs";
@@ -750,6 +756,7 @@ app.use(
     mailer: { sendOtpEmail },
     loadUserProfile: loadUserProfileForEmail,
     extractUserUuid: extractUserUuidFromProfile,
+    isReferralPointsBlocked: isReferralUserPointsBlocked,
   }),
 );
 
@@ -881,7 +888,22 @@ app.get("/api/admin/referrals/summary", requireAdminToken, async (req, res) => {
     }
 
     const events = await queryReferralEvents(filters);
-    return res.json(buildReferralSummary(events, { days, recentEventLimit: Math.min(200, limit) }));
+    const summary = buildReferralSummary(events, { days, recentEventLimit: Math.min(200, limit) });
+    const statuses = await getReferralUserStatuses(summary.referrers.map((item) => item.referrerUuid));
+    summary.referrers = summary.referrers.map((item) => ({
+      ...item,
+      status: statuses[item.referrerUuid] || {
+        penalized: false,
+        pointsBlocked: false,
+        penalizedAt: null,
+        pointsBlockedAt: null,
+        lastDebitAt: null,
+        lastDebitAmount: null,
+        lastDebitComment: null,
+        updatedAt: null,
+      },
+    }));
+    return res.json(summary);
   } catch (err) {
     return serverError(res, req, err);
   }
@@ -891,7 +913,8 @@ app.get("/api/admin/referrals/users/:uuid", requireAdminToken, async (req, res) 
   try {
     const uuid = assertValidUuid(req.params.uuid);
     const email = await fetchRmwUserEmail(uuid);
-    return res.json({ uuid, email: email || null });
+    const status = await getReferralUserStatus(uuid);
+    return res.json({ uuid, email: email || null, status });
   } catch (err) {
     if (err?.message === "Invalid user UUID") {
       return clientError(res, 400, "Некорректный UUID пользователя");
@@ -932,8 +955,10 @@ app.post("/api/admin/referrals/users/:uuid/points/debit", requireAdminToken, asy
       return clientError(res, 400, "Укажите причину списания");
     }
 
+    const pointsBlocked = req.body?.pointsBlocked === true;
     const data = await debitRmwReferralPoints(uuid, { amount, comment, force: req.body?.force === true });
-    return res.json(data);
+    const status = await markReferralUserPenalized(uuid, { amount, comment, pointsBlocked });
+    return res.json({ ...data, status });
   } catch (err) {
     if (err?.message === "Invalid user UUID") {
       return clientError(res, 400, "Некорректный UUID пользователя");
@@ -991,14 +1016,18 @@ app.get("/api/me/referrals/status", requireSession, async (req, res) => {
     const userUuid = assertValidUuid(req.session.userUuid);
     const events = await queryReferralEvents({ referrerUuid: userUuid, limit: 5000 });
     const risk = buildReferralRiskForReferrer(events, userUuid);
+    const status = await getReferralUserStatus(userUuid);
 
     return res.json({
       riskLevel: risk.riskLevel,
       riskScore: risk.riskScore,
-      blocked: risk.riskLevel === "critical" || risk.riskLevel === "high",
+      blocked: status.pointsBlocked || risk.riskLevel === "critical" || risk.riskLevel === "high",
+      penalized: status.penalized,
+      pointsBlocked: status.pointsBlocked,
       warnings: risk.warnings,
       counts: risk.counts,
       lastSeen: risk.lastSeen,
+      status,
     });
   } catch (err) {
     const status = err.status || 502;

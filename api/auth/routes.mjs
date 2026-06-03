@@ -49,9 +49,9 @@ import {
 } from "./session.mjs";
 
 /**
- * @param {{ mailer: { sendOtpEmail: (opts: { email: string, code: string }) => Promise<{ ok: boolean, error?: string, detail?: string, messageId?: string }> }, loadUserProfile: (email: string, req: import('express').Request) => Promise<object>, extractUserUuid: (profile: object) => string | null }} deps
+ * @param {{ mailer: { sendOtpEmail: (opts: { email: string, code: string }) => Promise<{ ok: boolean, error?: string, detail?: string, messageId?: string }> }, loadUserProfile: (email: string, req: import('express').Request, refUuid?: string) => Promise<object>, extractUserUuid: (profile: object) => string | null, isReferralPointsBlocked?: (refUuid: string) => Promise<boolean> }} deps
  */
-export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
+export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid, isReferralPointsBlocked }) {
   const router = Router();
 
   router.get("/api/admin/redis-auth", requireAdminToken, async (req, res) => {
@@ -212,9 +212,19 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
         return clientError(res, otpResult.status, messages[otpResult.reason] || "Неверный код");
       }
 
+      const referrerUuid = parsed.data.ref_uuid;
+      let referralBlocked = false;
+      if (referrerUuid && isReferralPointsBlocked) {
+        try {
+          referralBlocked = await isReferralPointsBlocked(referrerUuid);
+        } catch (err) {
+          req.log.warn({ err, referrerUuid }, "referral blocked status check failed");
+        }
+      }
+
       let profile;
       try {
-        profile = await loadUserProfile(email, req, parsed.data.ref_uuid);
+        profile = await loadUserProfile(email, req, referralBlocked ? undefined : referrerUuid);
       } catch (err) {
         const status = isTimeoutError(err) ? timeoutStatusCode(err) : err.status || 502;
         await recordAuthEvent("verify_profile_failed", req, { email, status: "failed" });
@@ -245,10 +255,17 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid }) {
       );
       await recordAuthEvent("login_ok", req, { email, userUuid, status: "ok" });
 
-      if (parsed.data.ref_uuid) {
-        const referrerUuid = parsed.data.ref_uuid;
+      if (referrerUuid) {
         const refCredit = profile?.referrer_credit || profile?.user?.referrer_credit;
-        if (refCredit && refCredit.credited === false) {
+        if (referralBlocked) {
+          await recordReferralEvent("ref_credit_skipped", req, {
+            referrerUuid,
+            referredEmailHash: emailHash(email),
+            referredUuidPrefix: userUuid.slice(0, 8),
+            reason: "referrer_points_blocked",
+            selfReferral: referrerUuid === userUuid,
+          });
+        } else if (refCredit && refCredit.credited === false) {
           await recordReferralEvent("ref_credit_skipped", req, {
             referrerUuid,
             referredEmailHash: emailHash(email),

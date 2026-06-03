@@ -15,8 +15,9 @@ process.env.RMW_API_KEY = "test-key";
 const { app } = await import("../index.mjs");
 const { redis } = await import("../redis.mjs");
 const { hashCode } = await import("../auth/crypto.mjs");
-const { otpCooldownKey, otpKey } = await import("../auth/keys.mjs");
+const { otpCooldownKey, otpKey, refUserStatusKey } = await import("../auth/keys.mjs");
 const { acquireOtpCooldown, clearOtpAndCooldown, putOtp } = await import("../auth/otp.mjs");
+const { queryReferralEvents } = await import("../referrals/events.mjs");
 const originalFetch = globalThis.fetch;
 
 async function withTestServer(fn) {
@@ -170,6 +171,46 @@ describe("auth integration", () => {
     assert.equal(second.status, 200);
     assert.equal(second.body.user.userUuid, userUuid);
     assert.equal(await redis.get(otpKey(email)), null);
+  });
+
+  it("does not pass blocked referrer UUID to RMW auth session", async () => {
+    const email = "blocked-ref@example.com";
+    const code = "12345";
+    const referrerUuid = "11111111-1111-1111-8111-111111111111";
+    const userUuid = "b6810e6c-8a69-42b1-b298-8b07d8378987";
+    await putOtp(email, hashCode(code), "test-owner");
+    await redis.hset(refUserStatusKey(referrerUuid), {
+      penalized: "1",
+      pointsBlocked: "1",
+      penalizedAt: new Date().toISOString(),
+      pointsBlockedAt: new Date().toISOString(),
+    });
+
+    globalThis.fetch = async (url, options = {}) => {
+      const href = String(url);
+      if (href.endsWith("/v1/auth/session")) {
+        assert.equal(JSON.parse(options.body).ref_uuid, undefined);
+        return Response.json({
+          exists: true,
+          user: {
+            userUuid,
+            plan: "Premium",
+            tariff: "1month",
+          },
+        });
+      }
+      if (href.includes("/v1/hwid/devices/")) {
+        return Response.json({ devices: [], total: 0 });
+      }
+      throw new Error(`Unexpected fetch: ${href}`);
+    };
+
+    const res = await requestJson("POST", "/api/auth/verify", { email, code, ref_uuid: referrerUuid });
+
+    assert.equal(res.status, 200);
+    const events = await queryReferralEvents({ referrerUuid, limit: 10 });
+    assert.equal(events[0].type, "ref_credit_skipped");
+    assert.equal(events[0].reason, "referrer_points_blocked");
   });
 
   it("DELETE /api/me/devices/x without session returns 401", async () => {

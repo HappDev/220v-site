@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import AdminPageShell from "@/components/AdminPageShell";
 import { Badge } from "@/components/ui/badge";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -59,6 +60,17 @@ type ReferralWarning = {
   evidence: Record<string, unknown>;
 };
 
+type ReferralUserStatus = {
+  penalized: boolean;
+  pointsBlocked: boolean;
+  penalizedAt?: string | null;
+  pointsBlockedAt?: string | null;
+  lastDebitAt?: string | null;
+  lastDebitAmount?: number | null;
+  lastDebitComment?: string | null;
+  updatedAt?: string | null;
+};
+
 type DailyRegistration = {
   date: string;
   registrations: number;
@@ -80,11 +92,13 @@ type ReferrerRisk = {
   };
   lastSeen?: string | null;
   events: ReferralEvent[];
+  status?: ReferralUserStatus;
 };
 
 type ReferrerUserLookup = {
   loading: boolean;
   email?: string | null;
+  status?: ReferralUserStatus;
   error?: string;
 };
 
@@ -125,6 +139,7 @@ type ReferralPointsResponse = {
 type DebitReferralPointsResponse = {
   transaction: ReferralPointItem;
   balance: number;
+  status?: ReferralUserStatus;
 };
 
 type ReferralSummary = {
@@ -222,6 +237,29 @@ function formatReferralPointReason(item: ReferralPointItem): string {
     return comment ? `Списание баллов: ${comment}` : "Списание баллов";
   }
   return item.reason || "—";
+}
+
+function hasReferralStatus(status?: ReferralUserStatus | null): status is ReferralUserStatus {
+  return Boolean(status?.penalized || status?.pointsBlocked);
+}
+
+function ReferralStatusBadges({ status }: { status?: ReferralUserStatus | null }) {
+  if (!hasReferralStatus(status)) return null;
+
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      {status.penalized ? (
+        <Badge variant="outline" className="border-amber-500/50 bg-amber-500/10 text-amber-700">
+          Оштрафован
+        </Badge>
+      ) : null}
+      {status.pointsBlocked ? (
+        <Badge variant="destructive">
+          Заблокирован
+        </Badge>
+      ) : null}
+    </span>
+  );
 }
 
 function formatChartDate(value: string) {
@@ -465,8 +503,10 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
   const [debitUuid, setDebitUuid] = useState("");
   const [debitAmount, setDebitAmount] = useState("");
   const [debitComment, setDebitComment] = useState("");
+  const [debitPointsBlocked, setDebitPointsBlocked] = useState(false);
   const [debitLoading, setDebitLoading] = useState(false);
   const [debitError, setDebitError] = useState("");
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, ReferralUserStatus>>({});
 
   const loadUserEmail = useCallback(
     async (uuid: string) => {
@@ -491,7 +531,11 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
           body && typeof body === "object" && "email" in body && typeof body.email === "string"
             ? body.email
             : null;
-        setUserLookups((prev) => ({ ...prev, [uuid]: { loading: false, email } }));
+        const status =
+          body && typeof body === "object" && "status" in body && body.status && typeof body.status === "object"
+            ? (body.status as ReferralUserStatus)
+            : undefined;
+        setUserLookups((prev) => ({ ...prev, [uuid]: { loading: false, email, status } }));
       } catch (err) {
         setUserLookups((prev) => ({ ...prev, [uuid]: { loading: false, error: asErrorMessage(err) } }));
       }
@@ -585,6 +629,7 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
     setDebitUuid(uuid);
     setDebitAmount("");
     setDebitComment("");
+    setDebitPointsBlocked(false);
     setDebitError("");
     setDebitOpen(true);
   }, []);
@@ -613,7 +658,7 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
             "X-Admin-Token": token.trim(),
           },
           credentials: "include",
-          body: JSON.stringify({ amount, comment, force: true }),
+          body: JSON.stringify({ amount, comment, force: true, pointsBlocked: debitPointsBlocked }),
         });
         const body = await res.json().catch(() => null);
         if (!res.ok) {
@@ -626,6 +671,17 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
         const data = body as DebitReferralPointsResponse;
         toast.success(`Списано ${amount} баллов. Новый баланс: ${data.balance ?? "—"}`);
         setBalanceLookups((prev) => ({ ...prev, [debitUuid]: { loading: false, balance: data.balance ?? null } }));
+        if (data.status) {
+          setStatusOverrides((prev) => ({ ...prev, [debitUuid]: data.status as ReferralUserStatus }));
+          setUserLookups((prev) => ({
+            ...prev,
+            [debitUuid]: {
+              ...(prev[debitUuid] || { loading: false }),
+              loading: false,
+              status: data.status,
+            },
+          }));
+        }
         setDebitOpen(false);
         if (historyUuid === debitUuid) {
           void loadReferralHistory(debitUuid, historyData?.page || 1);
@@ -636,7 +692,7 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
         setDebitLoading(false);
       }
     },
-    [debitAmount, debitComment, debitUuid, historyData?.page, historyUuid, loadReferralHistory, token],
+    [debitAmount, debitComment, debitPointsBlocked, debitUuid, historyData?.page, historyUuid, loadReferralHistory, token],
   );
 
   const selectedUserLookup = historyUuid ? userLookups[historyUuid] : null;
@@ -672,6 +728,8 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
               {items.map((item) => {
                 const visibleEvents =
                   eventType === "all" ? item.events : item.events.filter((event) => event.type === eventType);
+                const itemStatus =
+                  statusOverrides[item.referrerUuid] || userLookups[item.referrerUuid]?.status || item.status;
                 return (
                   <TableRow key={item.referrerUuid}>
                     <TableCell colSpan={7} className="p-0">
@@ -700,6 +758,7 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
                               label="UUID"
                               displayValue={shortenUuid(item.referrerUuid)}
                             />
+                            <ReferralStatusBadges status={itemStatus} />
                           </span>
                           <span>
                             <RiskBadge level={item.riskLevel} />
@@ -743,6 +802,15 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
                             <div>User prefixes: {item.unique.referredUuidPrefixes}</div>
                             <div>Credit skipped: {item.counts.creditSkipped}</div>
                           </div>
+                          {hasReferralStatus(itemStatus) ? (
+                            <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <ReferralStatusBadges status={itemStatus} />
+                              {itemStatus.penalizedAt ? <span>Штраф: {formatDate(itemStatus.penalizedAt)}</span> : null}
+                              {itemStatus.pointsBlockedAt ? (
+                                <span>Блокировка начислений: {formatDate(itemStatus.pointsBlockedAt)}</span>
+                              ) : null}
+                            </div>
+                          ) : null}
                           <div className="mb-3 flex flex-wrap gap-2">
                             <button
                               type="button"
@@ -939,6 +1007,21 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
                 disabled={debitLoading}
                 className="mt-1"
               />
+            </label>
+            <label className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3 text-sm text-foreground">
+              <Checkbox
+                checked={debitPointsBlocked}
+                onCheckedChange={(checked) => setDebitPointsBlocked(checked === true)}
+                disabled={debitLoading}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="block font-semibold">Заблокировать начисление реферальных баллов</span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  Пользователь будет помечен как заблокированный и больше не сможет получать баллы в
+                  реферальной системе.
+                </span>
+              </span>
             </label>
             {debitError ? (
               <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{debitError}</p>

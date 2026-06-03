@@ -324,7 +324,10 @@ describe("referral admin summary", () => {
       .set("X-Admin-Token", "admin-test-token");
 
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body, { uuid: REF_A, email: "referrer@example.com" });
+    assert.equal(res.body.uuid, REF_A);
+    assert.equal(res.body.email, "referrer@example.com");
+    assert.equal(res.body.status.penalized, false);
+    assert.equal(res.body.status.pointsBlocked, false);
   });
 
   it("returns referrer points history from RMW by UUID", async () => {
@@ -354,7 +357,7 @@ describe("referral admin summary", () => {
     assert.equal(res.body.items[0].reason, "registration");
   });
 
-  it("debits referrer points through RMW by UUID", async () => {
+  it("debits referrer points through RMW by UUID and marks referral status", async () => {
     globalThis.fetch = async (url, options) => {
       assert.equal(url, `${process.env.RMW_API_URL}/v1/users/${REF_A}/referral-points/debit`);
       assert.equal(options.method, "POST");
@@ -378,11 +381,19 @@ describe("referral admin summary", () => {
     const res = await request(app)
       .post(`/api/admin/referrals/users/${REF_A}/points/debit`)
       .set("X-Admin-Token", "admin-test-token")
-      .send({ amount: 7, comment: "fraud adjustment", force: true });
+      .send({ amount: 7, comment: "fraud adjustment", force: true, pointsBlocked: true });
 
     assert.equal(res.status, 200);
     assert.equal(res.body.balance, 8);
     assert.equal(res.body.transaction.reason, "manual_debit");
+    assert.equal(res.body.status.penalized, true);
+    assert.equal(res.body.status.pointsBlocked, true);
+
+    await seedEvents([event({ type: "ref_click", referrerUuid: REF_A })]);
+    const summary = await getSummary("?days=all&limit=50");
+    const refA = summary.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
+    assert.equal(refA.status.penalized, true);
+    assert.equal(refA.status.pointsBlocked, true);
   });
 
   it("blocks current user's referral exchange status for high risk", async () => {
