@@ -13,7 +13,7 @@ import { fetchWithTimeout } from "./http/fetchWithTimeout.mjs";
 import { isTimeoutError, publicMessageFromErr, timeoutStatusCode } from "./http/userMessages.mjs";
 import { checkoutSessionLimiter, refClickIpLimiter } from "./http/rateLimit.mjs";
 import { recordReferralEvent, queryReferralEvents } from "./referrals/events.mjs";
-import { buildReferralSummary } from "./referrals/summary.mjs";
+import { buildReferralRiskForReferrer, buildReferralSummary } from "./referrals/summary.mjs";
 import { SESSION_COOKIE } from "./config.mjs";
 import { base64url } from "./auth/crypto.mjs";
 import { createAuthRouter } from "./auth/routes.mjs";
@@ -978,6 +978,30 @@ app.get("/api/me", requireSession, async (req, res) => {
       status,
       publicMessageFromErr(err, "Не удалось загрузить профиль", { context: "профиль" }),
     );
+  }
+});
+
+app.get("/api/me/referrals/status", requireSession, async (req, res) => {
+  try {
+    const userUuid = assertValidUuid(req.session.userUuid);
+    const events = await queryReferralEvents({ referrerUuid: userUuid, limit: 5000 });
+    const risk = buildReferralRiskForReferrer(events, userUuid);
+
+    return res.json({
+      riskLevel: risk.riskLevel,
+      riskScore: risk.riskScore,
+      blocked: risk.riskLevel === "critical" || risk.riskLevel === "high",
+      warnings: risk.warnings,
+      counts: risk.counts,
+      lastSeen: risk.lastSeen,
+    });
+  } catch (err) {
+    const status = err.status || 502;
+    if (err?.message === "Invalid user UUID") {
+      return clientError(res, 400, "Некорректный UUID пользователя");
+    }
+    req.log.warn({ err, status }, "referral status check failed");
+    return clientError(res, status, "Не удалось проверить статус реферальной программы");
   }
 });
 

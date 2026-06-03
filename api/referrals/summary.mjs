@@ -147,8 +147,6 @@ function scoreReferrer(group) {
   let riskLevel = "none";
   let score = 0;
   const counts = group.counts;
-  const codeRate = counts.clicks > 0 ? counts.codes / counts.clicks : null;
-  const verifyRate = counts.codes > 0 ? counts.verifies / counts.codes : null;
   const ipIdentity = maxRepeatedIdentity(group.ipIdentities);
   const fingerprintIdentity = maxRepeatedIdentity(group.fingerprintIdentities);
   const repeatedAuthIp = maxCount(group.ipCounts, "authEvents");
@@ -204,7 +202,7 @@ function scoreReferrer(group) {
 
   if (counts.verifies >= 5 && counts.checkouts === 0) {
     addWarning(
-      makeWarning("verifies_without_checkout", "Много регистраций без checkout", "high", {
+      makeWarning("verifies_without_checkout", "Много регистраций без оплат", "high", {
         verifies: counts.verifies,
         checkouts: counts.checkouts,
       }),
@@ -212,18 +210,7 @@ function scoreReferrer(group) {
     );
   }
 
-  if (counts.codes >= 10 && verifyRate !== null && verifyRate < 0.2) {
-    addWarning(
-      makeWarning("low_verify_rate", "Много кодов с низкой конверсией в регистрацию", "high", {
-        codes: counts.codes,
-        verifies: counts.verifies,
-        verifyRate,
-      }),
-      60,
-    );
-  }
-
-  if (repeatedAuthIp && repeatedAuthIp.count >= 3) {
+  if (repeatedAuthIp && repeatedAuthIp.count >= 4) {
     addWarning(
       makeWarning("repeated_auth_ip", "Один IP hash часто используется при кодах/регистрациях", "high", {
         ipHash: repeatedAuthIp.key,
@@ -245,17 +232,6 @@ function scoreReferrer(group) {
         },
       ),
       55,
-    );
-  }
-
-  if (counts.clicks >= 20 && codeRate !== null && codeRate < 0.1) {
-    addWarning(
-      makeWarning("low_code_rate", "Много переходов с низкой конверсией в отправку кода", "medium", {
-        clicks: counts.clicks,
-        codes: counts.codes,
-        codeRate,
-      }),
-      35,
     );
   }
 
@@ -465,5 +441,35 @@ export function buildReferralSummary(events, opts = {}) {
     topFingerprints: sortedCounters(fingerprintCounts, topLimit),
     dailyRegistrations,
     events: filtered.slice(0, recentEventLimit).map(compactEvent),
+  };
+}
+
+export function buildReferralRiskForReferrer(events, referrerUuid, opts = {}) {
+  const uuid = typeof referrerUuid === "string" ? referrerUuid.trim() : "";
+  const summary = buildReferralSummary(events, {
+    ...opts,
+    topLimit: 1,
+    recentEventLimit: 25,
+  });
+  const referrer = summary.referrers.find((item) => item.referrerUuid === uuid);
+
+  if (referrer) {
+    return {
+      referrerUuid: uuid,
+      riskLevel: referrer.riskLevel,
+      riskScore: referrer.riskScore,
+      warnings: referrer.warnings,
+      counts: referrer.counts,
+      lastSeen: referrer.lastSeen,
+    };
+  }
+
+  return {
+    referrerUuid: uuid,
+    riskLevel: "none",
+    riskScore: 0,
+    warnings: [],
+    counts: emptyCounts(),
+    lastSeen: null,
   };
 }

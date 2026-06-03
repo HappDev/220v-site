@@ -1,5 +1,6 @@
 import { describe, it, before, beforeEach, afterEach, after } from "node:test";
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import request from "supertest";
 
 process.env.NODE_ENV = "test";
@@ -16,13 +17,33 @@ process.env.RMW_API_KEY = "test-key";
 
 const { app } = await import("../index.mjs");
 const { redis } = await import("../redis.mjs");
+const { saveSession } = await import("../auth/session.mjs");
+const { base64url } = await import("../auth/crypto.mjs");
+const { SESSION_COOKIE, CSRF_COOKIE } = await import("../config.mjs");
 const { refEventsListKey } = await import("../auth/keys.mjs");
+const { recordReferralEvent } = await import("../referrals/events.mjs");
 const originalFetch = globalThis.fetch;
 
 const REF_A = "11111111-1111-1111-8111-111111111111";
 const REF_B = "22222222-2222-2222-8222-222222222222";
 const REF_C = "33333333-3333-3333-8333-333333333333";
 const REF_D = "44444444-4444-4444-8444-444444444444";
+
+async function createSessionAgent(userUuid = REF_A) {
+  const sid = base64url(randomBytes(32));
+  const csrf = base64url(randomBytes(32));
+  await saveSession(sid, {
+    userUuid,
+    email: "referrer@example.com",
+    csrf,
+    expAt: Date.now() + 3600_000,
+  });
+
+  const agent = request.agent(app);
+  agent.set("Cookie", [`${SESSION_COOKIE}=${sid}`, `${CSRF_COOKIE}=${csrf}`]);
+  agent.set("X-CSRF-Token", csrf);
+  return agent;
+}
 
 function event(overrides) {
   return {
@@ -43,6 +64,19 @@ function event(overrides) {
 async function seedEvents(events) {
   if (events.length === 0) return;
   await redis.lpush(refEventsListKey(), ...events.map((item) => JSON.stringify(item)));
+}
+
+function fakeReferralReq(ip) {
+  return {
+    ip,
+    path: "/api/test",
+    socket: { remoteAddress: ip },
+    get(name) {
+      if (name === "User-Agent") return `test-agent-${ip}`;
+      return "";
+    },
+    log: { warn() {} },
+  };
 }
 
 function getSummary(query = "") {
@@ -170,6 +204,82 @@ describe("referral admin summary", () => {
     );
   });
 
+  it("does not flag low click or code conversion as risk", async () => {
+    await seedEvents([
+      ...Array.from({ length: 20 }, (_, index) =>
+        event({
+          type: "ref_click",
+          referrerUuid: REF_A,
+          ipHash: `click-ip-${index}`,
+          uaHash: `click-ua-${index}`,
+          fingerprintHash: `click-fp-${index}`,
+        }),
+      ),
+      ...Array.from({ length: 10 }, (_, index) =>
+        event({
+          type: "ref_send_code",
+          referrerUuid: REF_B,
+          ipHash: `code-ip-${index}`,
+          uaHash: `code-ua-${index}`,
+          fingerprintHash: `code-fp-${index}`,
+          referredEmailHash: `email-${index}`,
+        }),
+      ),
+    ]);
+
+    const res = await getSummary("?days=all&limit=50");
+
+    assert.equal(res.status, 200);
+    const refA = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
+    const refB = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_B);
+    assert.equal(refA.riskLevel, "low");
+    assert.equal(refB.riskLevel, "low");
+    assert.ok(!refA.warnings.some((warning) => warning.code === "low_code_rate"));
+    assert.ok(!refB.warnings.some((warning) => warning.code === "low_verify_rate"));
+  });
+
+  it("flags repeated auth IP only from four events", async () => {
+    await seedEvents(
+      Array.from({ length: 3 }, (_, index) =>
+        event({
+          type: "ref_send_code",
+          referrerUuid: REF_A,
+          ipHash: "ip-auth-repeat",
+          uaHash: `ua-auth-${index}`,
+          fingerprintHash: `fp-auth-${index}`,
+          referredEmailHash: `email-${index}`,
+        }),
+      ),
+    );
+
+    const belowThreshold = await getSummary("?days=all&limit=50");
+
+    assert.equal(belowThreshold.status, 200);
+    assert.equal(belowThreshold.body.referrers[0].riskLevel, "low");
+    assert.ok(
+      !belowThreshold.body.referrers[0].warnings.some((warning) => warning.code === "repeated_auth_ip"),
+    );
+
+    await seedEvents([
+      event({
+        type: "ref_send_code",
+        referrerUuid: REF_A,
+        ipHash: "ip-auth-repeat",
+        uaHash: "ua-auth-4",
+        fingerprintHash: "fp-auth-4",
+        referredEmailHash: "email-4",
+      }),
+    ]);
+
+    const atThreshold = await getSummary("?days=all&limit=50");
+
+    assert.equal(atThreshold.status, 200);
+    assert.equal(atThreshold.body.referrers[0].riskLevel, "high");
+    assert.ok(
+      atThreshold.body.referrers[0].warnings.some((warning) => warning.code === "repeated_auth_ip"),
+    );
+  });
+
   it("keeps normal paid referral activity low risk", async () => {
     await seedEvents([
       event({ type: "ref_click", referrerUuid: REF_D, ipHash: "ip-1", fingerprintHash: "fp-1" }),
@@ -273,5 +383,22 @@ describe("referral admin summary", () => {
     assert.equal(res.status, 200);
     assert.equal(res.body.balance, 8);
     assert.equal(res.body.transaction.reason, "manual_debit");
+  });
+
+  it("blocks current user's referral exchange status for high risk", async () => {
+    const agent = await createSessionAgent(REF_A);
+    for (let idx = 0; idx < 5; idx += 1) {
+      await recordReferralEvent("ref_verify_ok", fakeReferralReq(`127.0.0.${idx + 1}`), {
+        referrerUuid: REF_A,
+        referredEmailHash: `email-${idx}`,
+        referredUuidPrefix: `user-${idx}`,
+      });
+    }
+
+    const res = await agent.get("/api/me/referrals/status");
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.riskLevel, "high");
+    assert.equal(res.body.blocked, true);
   });
 });

@@ -38,8 +38,15 @@ type ReferralPointsResponse = {
   } | null;
 };
 
+type ReferralStatusResponse = {
+  riskLevel: string;
+  blocked: boolean;
+};
+
 const PAGE_SIZE = 20;
 const POINTS_PER_DAY = 10;
+const REFERRAL_EXCHANGE_BLOCKED_MESSAGE =
+  "Списание/обмен баллов недоступны. Обратитесь в техническую поддержку.";
 
 const PRIZE_OPTIONS = [
   {
@@ -140,6 +147,8 @@ const Referrals = () => {
   const [pointsInfoOpen, setPointsInfoOpen] = useState(false);
   const [daysExchangeOpen, setDaysExchangeOpen] = useState(false);
   const [prizesOpen, setPrizesOpen] = useState(false);
+  const [exchangeBlockedOpen, setExchangeBlockedOpen] = useState(false);
+  const [exchangeStatusChecking, setExchangeStatusChecking] = useState(false);
   const [daysToExchange, setDaysToExchange] = useState("1");
   const [selectedPrizeId, setSelectedPrizeId] = useState<string | null>(null);
   const [prizeClaimDetails, setPrizeClaimDetails] = useState("");
@@ -269,7 +278,49 @@ const Referrals = () => {
   const exchangeDaysCost = exchangeDays * POINTS_PER_DAY;
   const selectedPrize = PRIZE_OPTIONS.find((prize) => prize.id === selectedPrizeId) ?? null;
 
-  const handleExchangeDays = () => {
+  const showExchangeBlockedDialog = useCallback(() => {
+    setDaysExchangeOpen(false);
+    setPrizesOpen(false);
+    setExchangeBlockedOpen(true);
+  }, []);
+
+  const checkReferralExchangeAllowed = useCallback(async () => {
+    setExchangeStatusChecking(true);
+    try {
+      const { data, error: apiError } = await apiGet<ReferralStatusResponse>("/me/referrals/status");
+      if (apiError) throw apiError;
+      if (!data || typeof data !== "object") {
+        throw new Error("Некорректный ответ сервера");
+      }
+      if (data.blocked) {
+        showExchangeBlockedDialog();
+        return false;
+      }
+      return true;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Не удалось проверить статус пользователя");
+      return false;
+    } finally {
+      setExchangeStatusChecking(false);
+    }
+  }, [showExchangeBlockedDialog]);
+
+  const handleOpenDaysExchange = async () => {
+    if (await checkReferralExchangeAllowed()) {
+      setDaysExchangeOpen(true);
+    }
+  };
+
+  const handleOpenPrizes = async () => {
+    if (await checkReferralExchangeAllowed()) {
+      setPrizesOpen(true);
+      setSelectedPrizeId(null);
+      setPrizeClaimDetails("");
+      setPrizeError("");
+    }
+  };
+
+  const handleExchangeDays = async () => {
     if (exchangeDays <= 0) {
       toast.error("Укажите количество дней для обмена");
       return;
@@ -278,6 +329,9 @@ const Referrals = () => {
       toast.error("Недостаточно баллов для обмена", {
         description: `Нужно ${exchangeDaysCost}, доступно ${balance}.`,
       });
+      return;
+    }
+    if (!(await checkReferralExchangeAllowed())) {
       return;
     }
 
@@ -304,7 +358,7 @@ const Referrals = () => {
     setPrizeError("");
   };
 
-  const handlePrizeSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handlePrizeSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedPrize) return;
 
@@ -317,6 +371,9 @@ const Referrals = () => {
 
     if (!prizeClaimDetails.trim()) {
       toast.error("Укажите данные для получения приза");
+      return;
+    }
+    if (!(await checkReferralExchangeAllowed())) {
       return;
     }
 
@@ -489,21 +546,18 @@ const Referrals = () => {
                         <button
                           type="button"
                           className="dash-referrals-rewards__btn"
-                          onClick={() => setDaysExchangeOpen(true)}
+                          onClick={() => void handleOpenDaysExchange()}
+                          disabled={exchangeStatusChecking}
                         >
-                          Дни
+                          {exchangeStatusChecking ? "Проверяем..." : "Дни"}
                         </button>
                         <button
                           type="button"
                           className="dash-referrals-rewards__btn"
-                          onClick={() => {
-                            setPrizesOpen(true);
-                            setSelectedPrizeId(null);
-                            setPrizeClaimDetails("");
-                            setPrizeError("");
-                          }}
+                          onClick={() => void handleOpenPrizes()}
+                          disabled={exchangeStatusChecking}
                         >
-                          Призы
+                          {exchangeStatusChecking ? "Проверяем..." : "Призы"}
                         </button>
                       </div>
                       <p className="dash-referrals-rewards__hint">
@@ -687,8 +741,13 @@ const Referrals = () => {
             </p>
           </div>
 
-          <button type="button" className="dash-modal-btn dash-modal-btn--primary" onClick={handleExchangeDays}>
-            Обменять
+          <button
+            type="button"
+            className="dash-modal-btn dash-modal-btn--primary"
+            onClick={() => void handleExchangeDays()}
+            disabled={exchangeStatusChecking}
+          >
+            {exchangeStatusChecking ? "Проверяем..." : "Обменять"}
           </button>
         </DialogContent>
       </Dialog>
@@ -735,11 +794,27 @@ const Referrals = () => {
                 placeholder="Например: телефон, номер карты или удобный способ связи"
                 rows={4}
               />
-              <button type="submit" className="dash-modal-btn dash-modal-btn--primary">
-                Отправить заявку
+              <button type="submit" className="dash-modal-btn dash-modal-btn--primary" disabled={exchangeStatusChecking}>
+                {exchangeStatusChecking ? "Проверяем..." : "Отправить заявку"}
               </button>
             </form>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={exchangeBlockedOpen} onOpenChange={setExchangeBlockedOpen}>
+        <DialogContent className="dash-modal sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Обмен недоступен</DialogTitle>
+            <DialogDescription>{REFERRAL_EXCHANGE_BLOCKED_MESSAGE}</DialogDescription>
+          </DialogHeader>
+          <button
+            type="button"
+            className="dash-modal-btn dash-modal-btn--primary"
+            onClick={() => setExchangeBlockedOpen(false)}
+          >
+            Понятно
+          </button>
         </DialogContent>
       </Dialog>
     </LandingShell>
