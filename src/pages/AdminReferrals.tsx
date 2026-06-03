@@ -613,7 +613,7 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
             "X-Admin-Token": token.trim(),
           },
           credentials: "include",
-          body: JSON.stringify({ amount, comment }),
+          body: JSON.stringify({ amount, comment, force: true }),
         });
         const body = await res.json().catch(() => null);
         if (!res.ok) {
