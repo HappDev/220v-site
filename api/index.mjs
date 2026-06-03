@@ -287,6 +287,50 @@ async function fetchRmwReferralPoints(userUuid, { page, limit }) {
   return data;
 }
 
+async function debitRmwReferralPoints(userUuid, { amount, comment }) {
+  const uuid = assertValidUuid(userUuid);
+  const rmwUrl = rmwBaseUrl();
+  const rmwKey = rmwApiKey();
+  if (!rmwUrl || !rmwKey) {
+    const err = new Error("RMW not configured");
+    err.status = 500;
+    throw err;
+  }
+
+  const r = await fetchWithTimeout(
+    `${rmwUrl}/v1/users/${encodeURIComponent(uuid)}/referral-points/debit`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": rmwKey,
+      },
+      body: JSON.stringify({ amount, comment }),
+    },
+  );
+
+  const text = await r.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    const err = new Error("Invalid JSON from RMW referral-points debit");
+    err.status = 502;
+    throw err;
+  }
+
+  if (!r.ok) {
+    const err = new Error("RMW referral-points debit failed");
+    err.status = r.status >= 400 && r.status < 600 ? r.status : 502;
+    if (data && typeof data === "object" && typeof data.error === "string") {
+      err.publicMessage = data.error;
+    }
+    throw err;
+  }
+
+  return data;
+}
+
 async function getRmwBillingMeta({ allowCache = true } = {}) {
   const rmwUrl = rmwBaseUrl();
   const rmwKey = rmwApiKey();
@@ -868,6 +912,29 @@ app.get("/api/admin/referrals/users/:uuid/points", requireAdminToken, async (req
     }
     const status = err.status || 502;
     return clientError(res, status, "Не удалось загрузить историю рефералов из RMW");
+  }
+});
+
+app.post("/api/admin/referrals/users/:uuid/points/debit", requireAdminToken, async (req, res) => {
+  try {
+    const uuid = assertValidUuid(req.params.uuid);
+    const amount = Number(req.body?.amount);
+    const comment = typeof req.body?.comment === "string" ? req.body.comment.trim() : "";
+    if (!Number.isInteger(amount) || amount <= 0) {
+      return clientError(res, 400, "Укажите положительное целое число баллов");
+    }
+    if (!comment) {
+      return clientError(res, 400, "Укажите причину списания");
+    }
+
+    const data = await debitRmwReferralPoints(uuid, { amount, comment });
+    return res.json(data);
+  } catch (err) {
+    if (err?.message === "Invalid user UUID") {
+      return clientError(res, 400, "Некорректный UUID пользователя");
+    }
+    const status = err.status || 502;
+    return clientError(res, status, err.publicMessage || "Не удалось списать реферальные баллы в RMW");
   }
 });
 

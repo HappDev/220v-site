@@ -1,12 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronRight, GitBranch } from "lucide-react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import { toast } from "sonner";
 
 import AdminPageShell from "@/components/AdminPageShell";
 import { Badge } from "@/components/ui/badge";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ADMIN_TOKEN_STORAGE_KEY } from "@/lib/admin";
 import { apiBase } from "@/lib/api";
 import { formatUserError } from "@/lib/errorMessages";
@@ -88,6 +98,7 @@ type ReferralPointItem = {
     tariff_key?: string;
     is_first?: boolean;
     trigger?: string;
+    comment?: string;
   } | null;
   created_at: string;
 };
@@ -103,6 +114,11 @@ type ReferralPointsResponse = {
     active: boolean;
     reason: string | null;
   } | null;
+};
+
+type DebitReferralPointsResponse = {
+  transaction: ReferralPointItem;
+  balance: number;
 };
 
 type ReferralSummary = {
@@ -133,6 +149,9 @@ const RISK_LABELS: Record<RiskLevel, string> = {
   low: "Низкий",
   none: "Нет",
 };
+
+const RISK_REFERRERS_GRID_CLASS =
+  "grid grid-cols-1 gap-2 lg:grid-cols-[minmax(145px,1.2fr)_90px_56px_120px_125px_92px_118px] lg:items-center";
 
 const EVENT_LABELS: Record<string, string> = {
   ref_click: "Переход",
@@ -192,6 +211,10 @@ function formatReferralPointReason(item: ReferralPointItem): string {
     const first = item.meta?.is_first ? " — первая оплата" : "";
     return `Оплата тарифа реферала${suffix}${first}`;
   }
+  if (item.reason === "manual_debit") {
+    const comment = item.meta?.comment?.trim();
+    return comment ? `Списание баллов: ${comment}` : "Списание баллов";
+  }
   return item.reason || "—";
 }
 
@@ -209,6 +232,44 @@ function riskClass(level: RiskLevel) {
   return "border-border bg-muted text-muted-foreground";
 }
 
+function riskDotClass(level: RiskLevel) {
+  if (level === "critical") return "border-red-700 bg-red-600";
+  if (level === "high") return "border-orange-600 bg-orange-500";
+  if (level === "medium") return "border-amber-600 bg-amber-400";
+  if (level === "low") return "border-emerald-600 bg-emerald-500";
+  return "border-muted-foreground bg-muted";
+}
+
+function shortenUuid(value: string) {
+  if (value.length <= 20) return value;
+  return `${value.slice(0, 9)}...${value.slice(-8)}`;
+}
+
+async function copyToClipboard(value: string, label: string) {
+  const text = value.trim();
+  if (!text || text === "—") return;
+
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copied = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      if (!copied) throw new Error("copy failed");
+    }
+    toast.success(`${label} скопирован`);
+  } catch {
+    toast.error(`Не удалось скопировать ${label.toLowerCase()}`);
+  }
+}
+
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-xl bg-card p-4 ring-1 ring-border">
@@ -220,6 +281,38 @@ function StatCard({ label, value }: { label: string; value: number }) {
 
 function RiskBadge({ level }: { level: RiskLevel }) {
   return <Badge className={cn("border", riskClass(level))}>{RISK_LABELS[level] || level}</Badge>;
+}
+
+function CopyableText({
+  value,
+  label,
+  displayValue = value,
+  className,
+}: {
+  value: string;
+  label: string;
+  displayValue?: string;
+  className?: string;
+}) {
+  const handleCopy = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void copyToClipboard(value, label);
+  };
+
+  return (
+    <button
+      type="button"
+      title={`${value} — нажмите, чтобы скопировать`}
+      className={cn(
+        "inline-block max-w-full min-w-0 truncate text-left align-bottom font-mono text-xs font-semibold text-foreground underline-offset-2 transition hover:text-primary hover:underline",
+        className,
+      )}
+      onClick={handleCopy}
+    >
+      {displayValue}
+    </button>
+  );
 }
 
 function CounterList({ title, items }: { title: string; items: CounterEntry[] }) {
@@ -333,13 +426,24 @@ function WarningList({ warnings }: { warnings: ReferralWarning[] }) {
     return <span className="text-xs text-muted-foreground">Без warning-ов</span>;
   }
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {warnings.map((warning) => (
-        <Badge key={warning.code} className={cn("border", riskClass(warning.severity))}>
-          {warning.label}
-        </Badge>
-      ))}
-    </div>
+    <TooltipProvider delayDuration={150}>
+      <div className="flex flex-nowrap items-center gap-1.5">
+        {warnings.map((warning) => (
+          <Tooltip key={warning.code}>
+            <TooltipTrigger asChild>
+              <span
+                aria-label={warning.label}
+                className={cn("h-3.5 w-3.5 shrink-0 rounded-full border shadow-sm", riskDotClass(warning.severity))}
+              />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p className="font-medium">{warning.label}</p>
+              <p className="font-mono text-xs opacity-75">{warning.code}</p>
+            </TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -350,6 +454,12 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
   const [historyData, setHistoryData] = useState<ReferralPointsResponse | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
+  const [debitOpen, setDebitOpen] = useState(false);
+  const [debitUuid, setDebitUuid] = useState("");
+  const [debitAmount, setDebitAmount] = useState("");
+  const [debitComment, setDebitComment] = useState("");
+  const [debitLoading, setDebitLoading] = useState(false);
+  const [debitError, setDebitError] = useState("");
 
   const loadUserEmail = useCallback(
     async (uuid: string) => {
@@ -426,7 +536,65 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
     [loadReferralHistory],
   );
 
+  const openDebitDialog = useCallback((uuid: string) => {
+    setDebitUuid(uuid);
+    setDebitAmount("");
+    setDebitComment("");
+    setDebitError("");
+    setDebitOpen(true);
+  }, []);
+
+  const submitDebitPoints = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const amount = Number(debitAmount);
+      const comment = debitComment.trim();
+      if (!Number.isInteger(amount) || amount <= 0) {
+        setDebitError("Укажите положительное целое число баллов");
+        return;
+      }
+      if (!comment) {
+        setDebitError("Укажите причину списания");
+        return;
+      }
+
+      setDebitLoading(true);
+      setDebitError("");
+      try {
+        const res = await fetch(`${apiBase}/admin/referrals/users/${encodeURIComponent(debitUuid)}/points/debit`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token.trim(),
+          },
+          credentials: "include",
+          body: JSON.stringify({ amount, comment }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message =
+            body && typeof body === "object" && "error" in body && typeof body.error === "string"
+              ? body.error
+              : `Ошибка ${res.status}`;
+          throw new Error(message);
+        }
+        const data = body as DebitReferralPointsResponse;
+        toast.success(`Списано ${amount} баллов. Новый баланс: ${data.balance ?? "—"}`);
+        setDebitOpen(false);
+        if (historyUuid === debitUuid) {
+          void loadReferralHistory(debitUuid, historyData?.page || 1);
+        }
+      } catch (err) {
+        setDebitError(asErrorMessage(err));
+      } finally {
+        setDebitLoading(false);
+      }
+    },
+    [debitAmount, debitComment, debitUuid, historyData?.page, historyUuid, loadReferralHistory, token],
+  );
+
   const selectedUserLookup = historyUuid ? userLookups[historyUuid] : null;
+  const selectedDebitLookup = debitUuid ? userLookups[debitUuid] : null;
 
   return (
     <>
@@ -441,13 +609,17 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Реферер</TableHead>
-                <TableHead>Риск</TableHead>
-                <TableHead>Score</TableHead>
-                <TableHead>Воронка</TableHead>
-                <TableHead>Unique</TableHead>
-                <TableHead>Warning-и</TableHead>
-                <TableHead>Last seen</TableHead>
+                <TableHead colSpan={7} className="h-auto p-0">
+                  <div className={cn(RISK_REFERRERS_GRID_CLASS, "px-3 py-3")}>
+                    <span>Реферер</span>
+                    <span>Риск</span>
+                    <span>Score</span>
+                    <span>Воронка</span>
+                    <span>Unique</span>
+                    <span>Warning-и</span>
+                    <span>Last seen</span>
+                  </div>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -463,39 +635,54 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
                           if (event.currentTarget.open) void loadUserEmail(item.referrerUuid);
                         }}
                       >
-                        <summary className="grid cursor-pointer list-none grid-cols-1 gap-3 p-4 text-sm hover:bg-muted/50 md:grid-cols-[minmax(210px,1.5fr)_110px_80px_minmax(170px,1fr)_minmax(150px,1fr)_minmax(220px,1.5fr)_130px] [&::-webkit-details-marker]:hidden">
-                          <span className="flex min-w-0 items-start gap-2 text-foreground">
+                        <summary
+                          className={cn(
+                            RISK_REFERRERS_GRID_CLASS,
+                            "cursor-pointer list-none p-3 text-sm hover:bg-muted/50 [&::-webkit-details-marker]:hidden",
+                          )}
+                        >
+                          <span className="flex min-w-0 items-center gap-2 text-foreground">
                             <ChevronRight
-                              className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+                              className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
                               aria-hidden="true"
                             />
-                            <span className="min-w-0 break-all font-mono text-xs font-semibold">
-                              {item.referrerUuid}
-                            </span>
+                            <CopyableText
+                              value={item.referrerUuid}
+                              label="UUID"
+                              displayValue={shortenUuid(item.referrerUuid)}
+                            />
                           </span>
                           <span>
                             <RiskBadge level={item.riskLevel} />
                           </span>
                           <span className="font-bold text-foreground">{item.riskScore}</span>
-                          <span className="text-xs text-muted-foreground">
+                          <span className="whitespace-nowrap text-xs text-muted-foreground">
                             {item.counts.clicks}/{item.counts.codes}/{item.counts.verifies}/{item.counts.checkouts}
                           </span>
-                          <span className="text-xs text-muted-foreground">
+                          <span className="whitespace-nowrap text-xs text-muted-foreground">
                             IP {item.unique.ipHashes} · UA {item.unique.userAgentHashes} · FP{" "}
                             {item.unique.fingerprintHashes}
                           </span>
                           <WarningList warnings={item.warnings} />
-                          <span className="text-xs text-muted-foreground">{formatDate(item.lastSeen)}</span>
+                          <span className="whitespace-nowrap text-xs text-muted-foreground">
+                            {formatDate(item.lastSeen)}
+                          </span>
                         </summary>
                         <div className="border-t border-border bg-muted/20 p-4">
                           <div className="mb-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
-                            <div className="break-all">
+                            <div className="min-w-0">
                               Email:{" "}
-                              {userLookups[item.referrerUuid]?.loading
-                                ? "загрузка..."
-                                : userLookups[item.referrerUuid]?.error ||
-                                  userLookups[item.referrerUuid]?.email ||
-                                  "—"}
+                              {userLookups[item.referrerUuid]?.loading ? (
+                                "загрузка..."
+                              ) : userLookups[item.referrerUuid]?.email ? (
+                                <CopyableText
+                                  value={userLookups[item.referrerUuid]?.email || ""}
+                                  label="Email"
+                                  className="align-baseline"
+                                />
+                              ) : (
+                                userLookups[item.referrerUuid]?.error || "—"
+                              )}
                             </div>
                             <div>Email hashes: {item.unique.referredEmailHashes}</div>
                             <div>User prefixes: {item.unique.referredUuidPrefixes}</div>
@@ -508,6 +695,13 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
                               onClick={() => openReferralHistory(item.referrerUuid)}
                             >
                               История
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-lg bg-destructive px-3 py-2 text-xs font-semibold text-destructive-foreground transition hover:bg-destructive/90"
+                              onClick={() => openDebitDialog(item.referrerUuid)}
+                            >
+                              Списать баллы
                             </button>
                           </div>
                           {item.warnings.length > 0 && (
@@ -551,9 +745,20 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
           <DialogHeader>
             <DialogTitle>История рефералов</DialogTitle>
             <DialogDescription asChild>
-              <div className="space-y-1 break-all">
-                <p>UUID: {historyUuid || "—"}</p>
-                {selectedUserLookup?.email ? <p>Email: {selectedUserLookup.email}</p> : null}
+              <div className="space-y-1">
+                <p>
+                  UUID:{" "}
+                  {historyUuid ? (
+                    <CopyableText value={historyUuid} label="UUID" displayValue={shortenUuid(historyUuid)} />
+                  ) : (
+                    "—"
+                  )}
+                </p>
+                {selectedUserLookup?.email ? (
+                  <p>
+                    Email: <CopyableText value={selectedUserLookup.email} label="Email" />
+                  </p>
+                ) : null}
               </div>
             </DialogDescription>
           </DialogHeader>
@@ -584,7 +789,13 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
                     <TableRow key={item.id || `${item.created_at}-${index}`}>
                       <TableCell className="whitespace-nowrap text-xs">{formatDate(item.created_at)}</TableCell>
                       <TableCell className="text-xs">{formatReferralPointReason(item)}</TableCell>
-                      <TableCell className="break-all text-xs">{item.referred_user_email || "—"}</TableCell>
+                      <TableCell className="text-xs">
+                        {item.referred_user_email ? (
+                          <CopyableText value={item.referred_user_email} label="Email" className="max-w-[220px]" />
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
                       <TableCell
                         className={cn(
                           "text-xs font-bold",
@@ -623,6 +834,78 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
               </button>
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={debitOpen} onOpenChange={setDebitOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Списать реферальные баллы</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-1">
+                <p>
+                  UUID:{" "}
+                  {debitUuid ? (
+                    <CopyableText value={debitUuid} label="UUID" displayValue={shortenUuid(debitUuid)} />
+                  ) : (
+                    "—"
+                  )}
+                </p>
+                {selectedDebitLookup?.email ? (
+                  <p>
+                    Email: <CopyableText value={selectedDebitLookup.email} label="Email" />
+                  </p>
+                ) : null}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+
+          <form className="space-y-4" onSubmit={submitDebitPoints}>
+            <label className="block text-sm font-semibold text-foreground">
+              Количество баллов
+              <input
+                type="number"
+                min="1"
+                step="1"
+                inputMode="numeric"
+                value={debitAmount}
+                onChange={(event) => setDebitAmount(event.target.value)}
+                placeholder="Например, 10"
+                className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                disabled={debitLoading}
+              />
+            </label>
+            <label className="block text-sm font-semibold text-foreground">
+              Причина списания
+              <Textarea
+                value={debitComment}
+                onChange={(event) => setDebitComment(event.target.value)}
+                placeholder="Например: накрутка рефералов, ручная корректировка"
+                disabled={debitLoading}
+                className="mt-1"
+              />
+            </label>
+            {debitError ? (
+              <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{debitError}</p>
+            ) : null}
+            <DialogFooter>
+              <button
+                type="button"
+                className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={debitLoading}
+                onClick={() => setDebitOpen(false)}
+              >
+                Отмена
+              </button>
+              <button
+                type="submit"
+                className="rounded-lg bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground transition hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={debitLoading}
+              >
+                {debitLoading ? "Списываем..." : "Списать"}
+              </button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </>

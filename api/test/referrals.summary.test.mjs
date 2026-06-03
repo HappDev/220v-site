@@ -243,4 +243,35 @@ describe("referral admin summary", () => {
     assert.equal(res.body.page, 2);
     assert.equal(res.body.items[0].reason, "registration");
   });
+
+  it("debits referrer points through RMW by UUID", async () => {
+    globalThis.fetch = async (url, options) => {
+      assert.equal(url, `${process.env.RMW_API_URL}/v1/users/${REF_A}/referral-points/debit`);
+      assert.equal(options.method, "POST");
+      assert.equal(options.headers["X-Api-Key"], process.env.RMW_API_KEY);
+      assert.deepEqual(JSON.parse(options.body), { amount: 7, comment: "fraud adjustment" });
+      return new Response(
+        JSON.stringify({
+          balance: 8,
+          transaction: {
+            id: 2,
+            amount: -7,
+            reason: "manual_debit",
+            meta: { comment: "fraud adjustment" },
+            created_at: "2026-01-02T00:00:00Z",
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    const res = await request(app)
+      .post(`/api/admin/referrals/users/${REF_A}/points/debit`)
+      .set("X-Admin-Token", "admin-test-token")
+      .send({ amount: 7, comment: "fraud adjustment" });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.balance, 8);
+    assert.equal(res.body.transaction.reason, "manual_debit");
+  });
 });
