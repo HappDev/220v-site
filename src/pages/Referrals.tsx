@@ -41,12 +41,18 @@ type ReferralPointsResponse = {
 type ReferralStatusResponse = {
   riskLevel: string;
   blocked: boolean;
+  pointsBlocked?: boolean;
+  status?: {
+    pointsBlocked?: boolean;
+  };
 };
 
 const PAGE_SIZE = 20;
 const POINTS_PER_DAY = 10;
 const REFERRAL_EXCHANGE_BLOCKED_MESSAGE =
   "Списание/обмен баллов недоступны. Обратитесь в техническую поддержку.";
+const REFERRAL_POINTS_BLOCKED_MESSAGE =
+  "Начисление реферальных баллов для вашего аккаунта заблокировано. Новые регистрации и оплаты по вашей ссылке не будут приносить баллы.";
 
 const PRIZE_OPTIONS = [
   {
@@ -149,6 +155,7 @@ const Referrals = () => {
   const [prizesOpen, setPrizesOpen] = useState(false);
   const [exchangeBlockedOpen, setExchangeBlockedOpen] = useState(false);
   const [exchangeStatusChecking, setExchangeStatusChecking] = useState(false);
+  const [referralPointsBlocked, setReferralPointsBlocked] = useState(false);
   const [daysToExchange, setDaysToExchange] = useState("1");
   const [selectedPrizeId, setSelectedPrizeId] = useState<string | null>(null);
   const [prizeClaimDetails, setPrizeClaimDetails] = useState("");
@@ -274,6 +281,21 @@ const Referrals = () => {
     copyViaExecCommand();
   };
 
+  const updateReferralBlockedStatus = useCallback((data: ReferralStatusResponse) => {
+    setReferralPointsBlocked(data.pointsBlocked === true || data.status?.pointsBlocked === true);
+  }, []);
+
+  const fetchReferralStatus = useCallback(async () => {
+    try {
+      const { data, error: apiError } = await apiGet<ReferralStatusResponse>("/me/referrals/status");
+      if (apiError) throw apiError;
+      if (!data || typeof data !== "object") return;
+      updateReferralBlockedStatus(data);
+    } catch {
+      // Статус нужен только для подсказки на странице; ошибки покажем при попытке обмена.
+    }
+  }, [updateReferralBlockedStatus]);
+
   const exchangeDays = Math.max(0, Number.parseInt(daysToExchange, 10) || 0);
   const exchangeDaysCost = exchangeDays * POINTS_PER_DAY;
   const selectedPrize = PRIZE_OPTIONS.find((prize) => prize.id === selectedPrizeId) ?? null;
@@ -292,6 +314,7 @@ const Referrals = () => {
       if (!data || typeof data !== "object") {
         throw new Error("Некорректный ответ сервера");
       }
+      updateReferralBlockedStatus(data);
       if (data.blocked) {
         showExchangeBlockedDialog();
         return false;
@@ -303,7 +326,12 @@ const Referrals = () => {
     } finally {
       setExchangeStatusChecking(false);
     }
-  }, [showExchangeBlockedDialog]);
+  }, [showExchangeBlockedDialog, updateReferralBlockedStatus]);
+
+  useEffect(() => {
+    if (!startedReady || !userUuid) return;
+    void fetchReferralStatus();
+  }, [fetchReferralStatus, startedReady, userUuid]);
 
   const handleOpenDaysExchange = async () => {
     if (await checkReferralExchangeAllowed()) {
@@ -422,6 +450,15 @@ const Referrals = () => {
                 >
                   Оплатить тариф
                 </button>
+              </div>
+            )}
+
+            {programStarted && referralPointsBlocked && !showPageLoader && (
+              <div className="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+                <p className="mb-1 font-semibold">Начисление реферальных баллов заблокировано</p>
+                <p className="text-xs leading-relaxed text-red-100/80">
+                  {REFERRAL_POINTS_BLOCKED_MESSAGE} Если вы считаете, что это ошибка, обратитесь в техническую поддержку.
+                </p>
               </div>
             )}
 

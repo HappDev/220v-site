@@ -396,6 +396,65 @@ describe("referral admin summary", () => {
     assert.equal(refA.status.pointsBlocked, true);
   });
 
+  it("blocks referral points without calling RMW when debit fields are empty", async () => {
+    let fetchCalled = false;
+    globalThis.fetch = async () => {
+      fetchCalled = true;
+      throw new Error("RMW should not be called");
+    };
+
+    const res = await request(app)
+      .post(`/api/admin/referrals/users/${REF_A}/points/debit`)
+      .set("X-Admin-Token", "admin-test-token")
+      .send({ pointsBlocked: true });
+
+    assert.equal(res.status, 200);
+    assert.equal(fetchCalled, false);
+    assert.equal(res.body.balance, undefined);
+    assert.equal(res.body.transaction, undefined);
+    assert.equal(res.body.status.penalized, false);
+    assert.equal(res.body.status.pointsBlocked, true);
+
+    await seedEvents([event({ type: "ref_click", referrerUuid: REF_A })]);
+    const summary = await getSummary("?days=all&limit=50");
+    const refA = summary.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
+    assert.equal(refA.status.penalized, false);
+    assert.equal(refA.status.pointsBlocked, true);
+  });
+
+  it("unblocks referral points without calling RMW when debit fields are empty", async () => {
+    globalThis.fetch = async () => {
+      throw new Error("RMW should not be called");
+    };
+
+    const blockRes = await request(app)
+      .post(`/api/admin/referrals/users/${REF_A}/points/debit`)
+      .set("X-Admin-Token", "admin-test-token")
+      .send({ pointsBlocked: true });
+
+    assert.equal(blockRes.status, 200);
+    assert.equal(blockRes.body.status.pointsBlocked, true);
+
+    let fetchCalled = false;
+    globalThis.fetch = async () => {
+      fetchCalled = true;
+      throw new Error("RMW should not be called");
+    };
+
+    const res = await request(app)
+      .post(`/api/admin/referrals/users/${REF_A}/points/debit`)
+      .set("X-Admin-Token", "admin-test-token")
+      .send({});
+
+    assert.equal(res.status, 200);
+    assert.equal(fetchCalled, false);
+    assert.equal(res.body.balance, undefined);
+    assert.equal(res.body.transaction, undefined);
+    assert.equal(res.body.status.penalized, false);
+    assert.equal(res.body.status.pointsBlocked, false);
+    assert.equal(res.body.status.pointsBlockedAt, null);
+  });
+
   it("blocks current user's referral exchange status for high risk", async () => {
     const agent = await createSessionAgent(REF_A);
     for (let idx = 0; idx < 5; idx += 1) {

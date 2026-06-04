@@ -19,6 +19,8 @@ import {
   getReferralUserStatuses,
   isReferralUserPointsBlocked,
   markReferralUserPenalized,
+  markReferralUserPointsBlocked,
+  markReferralUserPointsUnblocked,
 } from "./referrals/userStatus.mjs";
 import { SESSION_COOKIE } from "./config.mjs";
 import { base64url } from "./auth/crypto.mjs";
@@ -946,8 +948,20 @@ app.get("/api/admin/referrals/users/:uuid/points", requireAdminToken, async (req
 app.post("/api/admin/referrals/users/:uuid/points/debit", requireAdminToken, async (req, res) => {
   try {
     const uuid = assertValidUuid(req.params.uuid);
-    const amount = Number(req.body?.amount);
+    const amountRaw = req.body?.amount;
+    const amountProvided = amountRaw !== undefined && amountRaw !== null && String(amountRaw).trim() !== "";
+    const amount = Number(amountRaw);
     const comment = typeof req.body?.comment === "string" ? req.body.comment.trim() : "";
+    const pointsBlocked = req.body?.pointsBlocked === true;
+    const debitRequested = amountProvided || Boolean(comment);
+
+    if (!debitRequested) {
+      const status = pointsBlocked
+        ? await markReferralUserPointsBlocked(uuid)
+        : await markReferralUserPointsUnblocked(uuid);
+      return res.json({ status });
+    }
+
     if (!Number.isInteger(amount) || amount <= 0) {
       return clientError(res, 400, "Укажите положительное целое число баллов");
     }
@@ -955,7 +969,6 @@ app.post("/api/admin/referrals/users/:uuid/points/debit", requireAdminToken, asy
       return clientError(res, 400, "Укажите причину списания");
     }
 
-    const pointsBlocked = req.body?.pointsBlocked === true;
     const data = await debitRmwReferralPoints(uuid, { amount, comment, force: req.body?.force === true });
     const status = await markReferralUserPenalized(uuid, { amount, comment, pointsBlocked });
     return res.json({ ...data, status });

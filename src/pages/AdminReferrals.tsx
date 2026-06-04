@@ -137,8 +137,8 @@ type ReferralPointsResponse = {
 };
 
 type DebitReferralPointsResponse = {
-  transaction: ReferralPointItem;
-  balance: number;
+  transaction?: ReferralPointItem;
+  balance?: number;
   status?: ReferralUserStatus;
 };
 
@@ -637,13 +637,16 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
   const submitDebitPoints = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      const amount = Number(debitAmount);
+      const amountText = debitAmount.trim();
+      const amount = Number(amountText);
       const comment = debitComment.trim();
-      if (!Number.isInteger(amount) || amount <= 0) {
+      const statusOnly = !amountText && !comment;
+
+      if (!statusOnly && (!Number.isInteger(amount) || amount <= 0)) {
         setDebitError("Укажите положительное целое число баллов");
         return;
       }
-      if (!comment) {
+      if (!statusOnly && !comment) {
         setDebitError("Укажите причину списания");
         return;
       }
@@ -658,7 +661,11 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
             "X-Admin-Token": token.trim(),
           },
           credentials: "include",
-          body: JSON.stringify({ amount, comment, force: true, pointsBlocked: debitPointsBlocked }),
+          body: JSON.stringify(
+            statusOnly
+              ? { pointsBlocked: debitPointsBlocked }
+              : { amount, comment, force: true, pointsBlocked: debitPointsBlocked },
+          ),
         });
         const body = await res.json().catch(() => null);
         if (!res.ok) {
@@ -669,8 +676,18 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
           throw new Error(message);
         }
         const data = body as DebitReferralPointsResponse;
-        toast.success(`Списано ${amount} баллов. Новый баланс: ${data.balance ?? "—"}`);
-        setBalanceLookups((prev) => ({ ...prev, [debitUuid]: { loading: false, balance: data.balance ?? null } }));
+        if (statusOnly) {
+          toast.success(
+            debitPointsBlocked
+              ? "Начисление реферальных баллов заблокировано"
+              : "Начисление реферальных баллов разблокировано",
+          );
+        } else {
+          toast.success(`Списано ${amount} баллов. Новый баланс: ${data.balance ?? "—"}`);
+        }
+        if (typeof data.balance === "number") {
+          setBalanceLookups((prev) => ({ ...prev, [debitUuid]: { loading: false, balance: data.balance } }));
+        }
         if (data.status) {
           setStatusOverrides((prev) => ({ ...prev, [debitUuid]: data.status as ReferralUserStatus }));
           setUserLookups((prev) => ({
@@ -683,7 +700,7 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
           }));
         }
         setDebitOpen(false);
-        if (historyUuid === debitUuid) {
+        if (!statusOnly && historyUuid === debitUuid) {
           void loadReferralHistory(debitUuid, historyData?.page || 1);
         }
       } catch (err) {

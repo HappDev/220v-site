@@ -71,6 +71,35 @@ export async function markReferralUserPenalized(referrerUuid, { amount, comment,
   return getReferralUserStatus(referrerUuid);
 }
 
+export async function markReferralUserPointsBlocked(referrerUuid) {
+  const now = new Date().toISOString();
+  const key = refUserStatusKey(referrerUuid);
+  const existing = await redis.hgetall(key);
+  const update = {
+    pointsBlocked: "1",
+    updatedAt: now,
+  };
+
+  if (!existing.pointsBlockedAt) {
+    update.pointsBlockedAt = now;
+  }
+
+  await redis.hset(key, update);
+  return getReferralUserStatus(referrerUuid);
+}
+
+export async function markReferralUserPointsUnblocked(referrerUuid) {
+  const now = new Date().toISOString();
+  const key = refUserStatusKey(referrerUuid);
+
+  await redis.hset(key, {
+    pointsBlocked: "0",
+    updatedAt: now,
+  });
+  await redis.hdel(key, "pointsBlockedAt");
+  return getReferralUserStatus(referrerUuid);
+}
+
 export async function isReferralUserPointsBlocked(referrerUuid) {
   const value = await redis.hget(refUserStatusKey(referrerUuid), "pointsBlocked");
   return normalizeBool(value);
