@@ -186,7 +186,32 @@ function singleUrlFromLine(line: string): string | null {
   return trimmed;
 }
 
-function parseMessageForDisplay(message: ChatMessage): { text: string; attachments: ChatAttachment[] } {
+/**
+ * Операторы (TalkMe) присылают вложения одной строкой вида
+ * `имя-файла.jpg (8 Kb) https://fs.site-chat.me/.../file.jpg`.
+ * Вытаскиваем из такой строки ссылку и человекочитаемое имя.
+ */
+function inlineAttachmentFromLine(line: string): ChatAttachment | null {
+  const trimmed = line.trim();
+  const urlMatch = trimmed.match(/\s+(https?:\/\/\S+)$/i);
+  if (!urlMatch) return null;
+
+  const url = urlMatch[1];
+  const textBeforeUrl = trimmed.slice(0, urlMatch.index).trim();
+  const sizeMatch = textBeforeUrl.match(
+    /^(.+?)\s*\(\s*\d+(?:[.,]\d+)?\s*(?:b|kb|kib|mb|mib|gb|gib|байт(?:а|ов)?|кб|мб|гб)\s*\)$/i,
+  );
+  if (!sizeMatch) return null;
+
+  const fileName = sizeMatch[1].trim() || getFileNameFromUrl(url);
+  const kind = getAttachmentKind({ url, fileName });
+
+  if (kind === "file" && !isSupportAttachmentUrl(url)) return null;
+
+  return { url, fileName, kind };
+}
+
+export function parseMessageForDisplay(message: ChatMessage): { text: string; attachments: ChatAttachment[] } {
   const attachments = [...(message.attachments ?? [])];
   const textLines: string[] = [];
   const lines = message.text.split(/\r?\n/);
@@ -204,6 +229,12 @@ function parseMessageForDisplay(message: ChatMessage): { text: string; attachmen
         kind: getAttachmentKind({ url: nextUrl, fileName }),
       });
       index += 1;
+      continue;
+    }
+
+    const inlineAttachment = inlineAttachmentFromLine(line);
+    if (inlineAttachment) {
+      attachments.push(inlineAttachment);
       continue;
     }
 
@@ -230,21 +261,27 @@ function parseMessageForDisplay(message: ChatMessage): { text: string; attachmen
   };
 }
 
-function ChatAttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
+function ChatAttachmentPreview({
+  attachment,
+  onImageClick,
+}: {
+  attachment: ChatAttachment;
+  onImageClick: (attachment: ChatAttachment) => void;
+}) {
   const kind = getAttachmentKind(attachment);
   const fileName = attachment.fileName || getFileNameFromUrl(attachment.url);
 
   if (kind === "image") {
     return (
-      <a
+      <button
+        type="button"
         className="support2-attachment support2-attachment--image"
-        href={attachment.url}
-        target="_blank"
-        rel="noreferrer"
+        onClick={() => onImageClick({ ...attachment, fileName })}
+        title="Открыть изображение"
       >
         <img src={attachment.url} alt={fileName} loading="lazy" decoding="async" />
         <span>{fileName}</span>
-      </a>
+      </button>
     );
   }
 
@@ -302,6 +339,7 @@ const Chat = () => {
   const [onlineCount, setOnlineCount] = useState<number | null>(null);
   const [operatorTyping, setOperatorTyping] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<ChatAttachment | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const keyboardInsetRef = useRef(0);
@@ -667,6 +705,17 @@ const Chat = () => {
     resizeDraftTextarea(textareaRef.current);
   }, [draft, resizeDraftTextarea]);
 
+  useEffect(() => {
+    if (!lightboxImage) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLightboxImage(null);
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [lightboxImage]);
+
   const clearSelectedFile = () => {
     setSelectedFile(null);
     if (fileInputRef.current) {
@@ -837,7 +886,10 @@ const Chat = () => {
                               <div className="support2-message__attachments">
                                 {displayMessage.attachments.map((attachment) => (
                                   <span className="support2-message__attachment-item" key={attachment.url}>
-                                    <ChatAttachmentPreview attachment={attachment} />
+                                    <ChatAttachmentPreview
+                                      attachment={attachment}
+                                      onImageClick={setLightboxImage}
+                                    />
                                   </span>
                                 ))}
                               </div>
@@ -925,6 +977,38 @@ const Chat = () => {
           </div>
         </section>
       </main>
+
+      {lightboxImage ? (
+        <div
+          className="support2-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label={lightboxImage.fileName || "Изображение"}
+          onClick={() => setLightboxImage(null)}
+        >
+          <button
+            type="button"
+            className="support2-lightbox__close"
+            onClick={() => setLightboxImage(null)}
+            aria-label="Закрыть"
+          >
+            <X size={22} aria-hidden="true" />
+          </button>
+          <figure className="support2-lightbox__figure" onClick={(event) => event.stopPropagation()}>
+            <img
+              src={lightboxImage.url}
+              alt={lightboxImage.fileName || "Изображение"}
+              decoding="async"
+            />
+            <figcaption className="support2-lightbox__caption">
+              <span>{lightboxImage.fileName || getFileNameFromUrl(lightboxImage.url)}</span>
+              <a href={lightboxImage.url} target="_blank" rel="noreferrer">
+                Открыть оригинал
+              </a>
+            </figcaption>
+          </figure>
+        </div>
+      ) : null}
 
       <LandingFooter />
     </LandingShell>
