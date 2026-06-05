@@ -172,7 +172,7 @@ const RISK_LABELS: Record<RiskLevel, string> = {
 };
 
 const RISK_REFERRERS_GRID_CLASS =
-  "grid grid-cols-1 gap-2 lg:grid-cols-[minmax(145px,1.2fr)_90px_56px_120px_125px_92px_118px] lg:items-center";
+  "grid grid-cols-1 gap-2 lg:grid-cols-[minmax(145px,1.2fr)_72px_120px_125px_92px_118px] lg:items-center";
 
 const EVENT_LABELS: Record<string, string> = {
   ref_click: "Переход",
@@ -284,6 +284,14 @@ function riskDotClass(level: RiskLevel) {
   return "border-muted-foreground bg-muted";
 }
 
+function riskLevelForScore(score: number): RiskLevel {
+  if (score >= 90) return "critical";
+  if (score >= 55) return "high";
+  if (score >= 30) return "medium";
+  if (score > 0) return "low";
+  return "none";
+}
+
 function shortenUuid(value: string) {
   if (value.length <= 20) return value;
   return `${value.slice(0, 9)}...${value.slice(-8)}`;
@@ -325,6 +333,14 @@ function StatCard({ label, value }: { label: string; value: number }) {
 
 function RiskBadge({ level }: { level: RiskLevel }) {
   return <Badge className={cn("border", riskClass(level))}>{RISK_LABELS[level] || level}</Badge>;
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  return (
+    <Badge className={cn("min-w-10 justify-center border font-bold", riskClass(riskLevelForScore(score)))}>
+      {score}
+    </Badge>
+  );
 }
 
 function CopyableText({
@@ -742,17 +758,10 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead colSpan={7} className="h-auto p-0">
+                <TableHead colSpan={6} className="h-auto p-0">
                   <TooltipProvider delayDuration={150}>
                     <div className={cn(RISK_REFERRERS_GRID_CLASS, "px-3 py-3")}>
                       <span>Реферер</span>
-                      <ColumnHeaderHint label="Риск">
-                        <p className="font-medium">Уровень риска</p>
-                        <p>
-                          Итоговая категория реферера: <span className="font-mono">none → low → medium → high → critical</span>. Определяется
-                          по самому серьёзному из сработавших сигналов (warning-ов). Чем опаснее найденный сигнал, тем выше уровень.
-                        </p>
-                      </ColumnHeaderHint>
                       <ColumnHeaderHint label="Score">
                         <p className="font-medium">Балл риска</p>
                         <p>Сумма очков за все сработавшие сигналы. Чем больше балл, тем подозрительнее реферер. Очки за сигналы:</p>
@@ -799,7 +808,7 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
                   statusOverrides[item.referrerUuid] || userLookups[item.referrerUuid]?.status || item.status;
                 return (
                   <TableRow key={item.referrerUuid}>
-                    <TableCell colSpan={7} className="p-0">
+                    <TableCell colSpan={6} className="p-0">
                       <details
                         className="group"
                         onToggle={(event) => {
@@ -828,9 +837,8 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
                             <ReferralStatusBadges status={itemStatus} />
                           </span>
                           <span>
-                            <RiskBadge level={item.riskLevel} />
+                            <ScoreBadge score={item.riskScore} />
                           </span>
-                          <span className="font-bold text-foreground">{item.riskScore}</span>
                           <span className="whitespace-nowrap text-xs text-muted-foreground">
                             {item.counts.clicks}/{item.counts.codes}/{item.counts.verifies}/{item.counts.checkouts}
                           </span>
