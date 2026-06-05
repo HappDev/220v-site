@@ -1,5 +1,5 @@
-import { type FormEvent, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronRight, GitBranch } from "lucide-react";
+import { type FormEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ChevronRight, GitBranch, Info } from "lucide-react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 
@@ -465,6 +465,20 @@ function EventCard({ event }: { event: ReferralEvent }) {
   );
 }
 
+function ColumnHeaderHint({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex cursor-help items-center gap-1">
+          {label}
+          <Info className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs space-y-1 text-left text-xs font-normal leading-snug">{children}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function WarningList({ warnings }: { warnings: ReferralWarning[] }) {
   if (warnings.length === 0) {
     return <span className="text-xs text-muted-foreground">Без warning-ов</span>;
@@ -729,15 +743,51 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
             <TableHeader>
               <TableRow>
                 <TableHead colSpan={7} className="h-auto p-0">
-                  <div className={cn(RISK_REFERRERS_GRID_CLASS, "px-3 py-3")}>
-                    <span>Реферер</span>
-                    <span>Риск</span>
-                    <span>Score</span>
-                    <span>Воронка</span>
-                    <span>Unique</span>
-                    <span>Warning-и</span>
-                    <span>Last seen</span>
-                  </div>
+                  <TooltipProvider delayDuration={150}>
+                    <div className={cn(RISK_REFERRERS_GRID_CLASS, "px-3 py-3")}>
+                      <span>Реферер</span>
+                      <ColumnHeaderHint label="Риск">
+                        <p className="font-medium">Уровень риска</p>
+                        <p>
+                          Итоговая категория реферера: <span className="font-mono">none → low → medium → high → critical</span>. Определяется
+                          по самому серьёзному из сработавших сигналов (warning-ов). Чем опаснее найденный сигнал, тем выше уровень.
+                        </p>
+                      </ColumnHeaderHint>
+                      <ColumnHeaderHint label="Score">
+                        <p className="font-medium">Балл риска</p>
+                        <p>Сумма очков за все сработавшие сигналы. Чем больше балл, тем подозрительнее реферер. Очки за сигналы:</p>
+                        <ul className="ml-3 list-disc space-y-0.5">
+                          <li>другой аккаунт в том же браузере: +100</li>
+                          <li>общий IP-хэш у разных рефералов: +90</li>
+                          <li>общий fingerprint-хэш у разных рефералов: +90</li>
+                          <li>≥5 регистраций без единой оплаты: +70</li>
+                          <li>один IP-хэш часто при кодах/регистрациях: +55</li>
+                          <li>один fingerprint-хэш часто при кодах/регистрациях: +55</li>
+                          <li>≥2 пропущенных реферальных начисления: +35</li>
+                          <li>повтор User-Agent / fingerprint без оплат: +30</li>
+                        </ul>
+                        <p className="opacity-75">Если сигналов нет, но события есть — базовый балл 5.</p>
+                      </ColumnHeaderHint>
+                      <ColumnHeaderHint label="Воронка">
+                        <p className="font-medium">Воронка переходов</p>
+                        <p>
+                          Формат <span className="font-mono">клики / коды / регистрации / оплаты</span>. Показывает, сколько пользователей
+                          дошло до каждого шага: переход по ссылке → ввод кода → подтверждение (регистрация) → оплата (checkout).
+                        </p>
+                      </ColumnHeaderHint>
+                      <ColumnHeaderHint label="Unique">
+                        <p className="font-medium">Уникальные идентификаторы</p>
+                        <p>
+                          Число различных технических отпечатков среди рефералов: <span className="font-mono">IP</span> — уникальные хэши
+                          IP-адресов, <span className="font-mono">UA</span> — уникальные хэши User-Agent, <span className="font-mono">FP</span>{" "}
+                          — уникальные fingerprint-хэши.
+                        </p>
+                        <p className="opacity-75">Низкое разнообразие при большом числе рефералов — признак накрутки одним человеком.</p>
+                      </ColumnHeaderHint>
+                      <span>Warning-и</span>
+                      <span>Last seen</span>
+                    </div>
+                  </TooltipProvider>
                 </TableHead>
               </TableRow>
             </TableHeader>
