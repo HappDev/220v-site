@@ -122,9 +122,29 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function messageMatchesSentMessage(
+  message: ChatMessage,
+  optimisticMessage: ChatMessage,
+  sentMessageId?: number | null,
+): boolean {
+  if (sentMessageId && message.id === sentMessageId) return true;
+  if (message.sender !== "client") return false;
+
+  const sentAt = Date.parse(optimisticMessage.dateTime);
+  const messageAt = Date.parse(message.dateTime);
+  if (Number.isFinite(sentAt) && Number.isFinite(messageAt) && messageAt < sentAt - 10_000) {
+    return false;
+  }
+
+  const sentText = optimisticMessage.text.trim();
+  return sentText ? message.text.includes(sentText) : Boolean(optimisticMessage.attachments?.length);
+}
+
 /** Сообщения — каждые 8 с; мета (операторы, статус, typing) — каждые 20 с. */
 const CHAT_MESSAGES_POLL_MS = 8_000;
 const CHAT_META_POLL_MS = 20_000;
+const CHAT_SEND_HISTORY_SYNC_TIMEOUT_MS = 6_000;
+const CHAT_SEND_HISTORY_SYNC_RETRY_MS = 900;
 
 function formatMessageTime(value: string): string {
   if (!value) return "";
@@ -434,7 +454,7 @@ const Chat = () => {
     return applyClientSearchResponse(data);
   }, [applyClientSearchResponse, email, handleAuthError]);
 
-  const loadMessagesByClientId = useCallback(async (nextClientId: string): Promise<void> => {
+  const fetchMessagesByClientId = useCallback(async (nextClientId: string): Promise<ChatMessage[]> => {
     const messagesData = await talkmePost<MessagesResponse>(
       "/talkme/messages",
       {
@@ -443,11 +463,16 @@ const Chat = () => {
       },
       handleAuthError,
     );
+    return Array.isArray(messagesData.messages) ? messagesData.messages : [];
+  }, [handleAuthError]);
+
+  const loadMessagesByClientId = useCallback(async (nextClientId: string): Promise<void> => {
+    const nextMessages = await fetchMessagesByClientId(nextClientId);
     if (!mountedRef.current) return;
-    setMessages(Array.isArray(messagesData.messages) ? messagesData.messages : []);
+    setMessages(nextMessages);
     setHasTalkMeVisitor(true);
     setError(null);
-  }, [handleAuthError]);
+  }, [fetchMessagesByClientId]);
 
   const syncMessagesAfterVisitorCreation = useCallback(
     async (nextClientId: string) => {
@@ -491,6 +516,58 @@ const Chat = () => {
       }
     },
     [loadMessagesByClientId, refreshClientLookup],
+  );
+
+  const syncMessagesAfterSend = useCallback(
+    async (
+      nextClientId: string,
+      optimisticMessage: ChatMessage,
+      sentMessageId?: number | null,
+    ): Promise<void> => {
+      const startedAt = Date.now();
+      let lastError: unknown = null;
+
+      while (mountedRef.current && Date.now() - startedAt <= CHAT_SEND_HISTORY_SYNC_TIMEOUT_MS) {
+        try {
+          const nextMessages = await fetchMessagesByClientId(nextClientId);
+          if (!mountedRef.current) return;
+
+          const sentMessageLoaded = nextMessages.some((message) =>
+            messageMatchesSentMessage(message, optimisticMessage, sentMessageId),
+          );
+
+          if (sentMessageLoaded) {
+            setMessages(nextMessages);
+            setHasTalkMeVisitor(true);
+            setError(null);
+            return;
+          }
+
+          setMessages([...nextMessages, optimisticMessage]);
+          lastError = null;
+        } catch (err) {
+          lastError = err;
+          if (!mountedRef.current) return;
+        }
+
+        const elapsedMs = Date.now() - startedAt;
+        const remainingMs = CHAT_SEND_HISTORY_SYNC_TIMEOUT_MS - elapsedMs;
+        if (remainingMs <= 0) break;
+        await wait(Math.min(CHAT_SEND_HISTORY_SYNC_RETRY_MS, remainingMs));
+      }
+
+      if (!mountedRef.current) return;
+
+      if (isTalkMeVisitorNotFoundError(lastError)) {
+        setHasTalkMeVisitor(false);
+        setError(null);
+        void syncMessagesAfterVisitorCreation(nextClientId);
+        return;
+      }
+
+      setError("Сообщение отправлено, но историю пока не удалось обновить");
+    },
+    [fetchMessagesByClientId, syncMessagesAfterVisitorCreation],
   );
 
   const refreshMeta = useCallback(async () => {
@@ -783,20 +860,10 @@ const Chat = () => {
       if (data.clientId) {
         setClientId(data.clientId);
       }
-      try {
-        if (nextClientId) {
-          await loadMessagesByClientId(nextClientId);
-        } else {
-          await loadMessages({ silent: true });
-        }
-      } catch (err) {
-        if (isTalkMeVisitorNotFoundError(err) && nextClientId) {
-          setHasTalkMeVisitor(false);
-          setError(null);
-          void syncMessagesAfterVisitorCreation(nextClientId);
-        } else {
-          setError("Сообщение отправлено, но историю пока не удалось обновить");
-        }
+      if (nextClientId) {
+        await syncMessagesAfterSend(nextClientId, optimisticMessage, data.messageId);
+      } else {
+        await loadMessages({ silent: true });
       }
       await refreshMeta();
     } catch (err) {

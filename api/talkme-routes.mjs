@@ -621,7 +621,10 @@ async function setTalkmeClientInfo({ clientId, name, email, customData }) {
       JSON.stringify(result),
     );
 
-    return res.json({ messageId: result?.id ?? null, clientId });
+    const rawMessageId = result?.id ?? result?.messageId ?? result?.message?.id ?? null;
+    const numericMessageId = Number(rawMessageId);
+    const messageId = Number.isFinite(numericMessageId) && numericMessageId > 0 ? numericMessageId : null;
+    return res.json({ messageId, clientId });
   } catch (err) {
     const { message, status } = talkmeRouteError(err);
     return res.status(status).json({ error: message });
