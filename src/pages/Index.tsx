@@ -197,11 +197,15 @@ const Index = () => {
     setLoading(true);
     try {
       const refUuid = peekPendingRefUuid();
-      const sendCodeBody: { email: string; ref_uuid?: string } = {
+      const sendCodeBody: { email: string; ref_uuid?: string; fingerprint?: string } = {
         email: normalizedEmail,
       };
       if (refUuid) {
         sendCodeBody.ref_uuid = refUuid;
+        const fingerprint = await getBrowserFingerprint();
+        if (fingerprint) {
+          sendCodeBody.fingerprint = fingerprint;
+        }
       }
 
       const { data, error, retryAfterSec } = await apiPost<{ ok?: boolean; error?: string; retryAfterSec?: number }>(
@@ -250,12 +254,16 @@ const Index = () => {
     setLoading(true);
     try {
       const refUuid = peekPendingRefUuid();
-      const verifyBody: { email: string; code: string; ref_uuid?: string } = {
+      const verifyBody: { email: string; code: string; ref_uuid?: string; fingerprint?: string } = {
         email: normalizedEmail,
         code,
       };
       if (refUuid) {
         verifyBody.ref_uuid = refUuid;
+        const fingerprint = await getBrowserFingerprint();
+        if (fingerprint) {
+          verifyBody.fingerprint = fingerprint;
+        }
       }
 
       const { data, error } = await apiPost<{ user?: unknown; error?: string }>("/auth/verify", verifyBody);

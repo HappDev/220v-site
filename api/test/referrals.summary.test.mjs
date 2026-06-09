@@ -140,10 +140,51 @@ describe("referral admin summary", () => {
     );
   });
 
-  it("flags another account active in the same browser as critical", async () => {
+  it("does not flag a link open from another account without registration as critical", async () => {
     await seedEvents([
       event({ type: "ref_click", referrerUuid: REF_A, otherUserUuidPrefix: "99999999", selfReferral: false }),
       event({ type: "ref_self_referral", referrerUuid: REF_B, otherUserUuidPrefix: "22222222", selfReferral: true }),
+    ]);
+
+    const res = await getSummary("?days=all&limit=50");
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.totals.multiAccountDetections, 0);
+
+    const refA = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
+    assert.ok(refA);
+    assert.notEqual(refA.riskLevel, "critical");
+    assert.ok(!refA.warnings.some((warning) => warning.code === "same_browser_other_account"));
+
+    // A self-referral carries the user's own prefix and must not be treated as multi-account.
+    const refB = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_B);
+    assert.ok(refB);
+    assert.notEqual(refB.riskLevel, "critical");
+    assert.ok(!refB.warnings.some((warning) => warning.code === "same_browser_other_account"));
+  });
+
+  it("flags registration after opening a referral link from another account in the same browser as critical", async () => {
+    await seedEvents([
+      event({
+        type: "ref_click",
+        at: "2026-01-01T00:00:00.000Z",
+        referrerUuid: REF_A,
+        otherUserUuidPrefix: "99999999",
+        fingerprintHash: "fp-same-pc",
+        ipHash: "ip-same-pc",
+        uaHash: "ua-same-pc",
+        selfReferral: false,
+      }),
+      event({
+        type: "ref_verify_ok",
+        at: "2026-01-01T00:01:00.000Z",
+        referrerUuid: REF_A,
+        referredEmailHash: "email-new",
+        referredUuidPrefix: "new-user",
+        fingerprintHash: "fp-same-pc",
+        ipHash: "ip-same-pc",
+        uaHash: "ua-same-pc",
+      }),
     ]);
 
     const res = await getSummary("?days=all&limit=50");
@@ -154,13 +195,10 @@ describe("referral admin summary", () => {
     const refA = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
     assert.ok(refA);
     assert.equal(refA.riskLevel, "critical");
-    assert.ok(refA.warnings.some((warning) => warning.code === "same_browser_other_account"));
-
-    // A self-referral carries the user's own prefix and must not be treated as multi-account.
-    const refB = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_B);
-    assert.ok(refB);
-    assert.notEqual(refB.riskLevel, "critical");
-    assert.ok(!refB.warnings.some((warning) => warning.code === "same_browser_other_account"));
+    const warning = refA.warnings.find((item) => item.code === "same_browser_other_account");
+    assert.ok(warning);
+    assert.equal(warning.evidence.accounts, 1);
+    assert.equal(warning.evidence.registrations, 1);
   });
 
   it("marks repeated fingerprint identities as critical", async () => {

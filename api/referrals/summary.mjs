@@ -15,6 +15,8 @@ const EVENT_TO_COUNT = {
   ref_self_referral: "selfReferrals",
 };
 
+const REGISTRATION_EVENT_TYPES = new Set(["ref_verify_ok", "ref_credit_skipped"]);
+
 function emptyCounts() {
   return {
     clicks: 0,
@@ -83,6 +85,49 @@ function maxCount(hashMap, field = "total") {
     if (!top || count > top.count) top = { key, count };
   }
   return top;
+}
+
+function browserSignalsMatch(candidate, event) {
+  if (candidate.fingerprintHash && event.fingerprintHash && candidate.fingerprintHash === event.fingerprintHash) {
+    return "fingerprint";
+  }
+  if (candidate.ipHash && candidate.uaHash && candidate.ipHash === event.ipHash && candidate.uaHash === event.uaHash) {
+    return "ip_ua";
+  }
+  return "";
+}
+
+function eventHappenedBeforeOrAt(candidate, event) {
+  const candidateAt = Date.parse(candidate.at || "");
+  const eventAt = Date.parse(event.at || "");
+  return Number.isFinite(candidateAt) && Number.isFinite(eventAt) && candidateAt <= eventAt;
+}
+
+function buildSameBrowserRegistrations(candidates, registrationEvents) {
+  const matchesByPrefix = new Map();
+
+  for (const candidate of candidates) {
+    for (const event of registrationEvents) {
+      if (!eventHappenedBeforeOrAt(candidate, event)) continue;
+      const matchType = browserSignalsMatch(candidate, event);
+      if (!matchType) continue;
+
+      const prefix = candidate.otherUserUuidPrefix;
+      const current = matchesByPrefix.get(prefix) || {
+        prefix,
+        matchTypes: new Set(),
+        referredUuidPrefixes: new Set(),
+        fingerprintHash: candidate.fingerprintHash || event.fingerprintHash || undefined,
+        ipHash: candidate.ipHash || event.ipHash || undefined,
+        uaHash: candidate.uaHash || event.uaHash || undefined,
+      };
+      current.matchTypes.add(matchType);
+      if (event.referredUuidPrefix) current.referredUuidPrefixes.add(event.referredUuidPrefix);
+      matchesByPrefix.set(prefix, current);
+    }
+  }
+
+  return [...matchesByPrefix.values()];
 }
 
 function compactEvent(event) {
@@ -160,15 +205,27 @@ function scoreReferrer(group) {
     score += points;
   };
 
-  if (group.otherAccountPrefixes.size > 0) {
+  if (group.sameBrowserRegistrations.length > 0) {
     addWarning(
       makeWarning(
         "same_browser_other_account",
-        "Другой аккаунт зарегистрирован/активен в том же браузере",
+        "Регистрация после открытия ссылки из браузера/ПК другого аккаунта",
         "critical",
         {
-          accounts: group.otherAccountPrefixes.size,
-          prefixes: [...group.otherAccountPrefixes].slice(0, 5),
+          accounts: group.sameBrowserRegistrations.length,
+          prefixes: group.sameBrowserRegistrations.map((item) => item.prefix).slice(0, 5),
+          registrations: group.sameBrowserRegistrations.reduce(
+            (sum, item) => sum + item.referredUuidPrefixes.size,
+            0,
+          ),
+          matches: group.sameBrowserRegistrations.map((item) => ({
+            prefix: item.prefix,
+            matchTypes: [...item.matchTypes],
+            referredUuidPrefixes: [...item.referredUuidPrefixes].slice(0, 5),
+            fingerprintHash: item.fingerprintHash,
+            ipHash: item.ipHash,
+            uaHash: item.uaHash,
+          })),
         },
       ),
       100,
@@ -336,7 +393,9 @@ export function buildReferralSummary(events, opts = {}) {
         uniqueFingerprints: new Set(),
         uniqueReferredEmails: new Set(),
         uniqueReferredUsers: new Set(),
-        otherAccountPrefixes: new Set(),
+        browserAccountCandidates: [],
+        registrationEvents: [],
+        sameBrowserRegistrations: [],
         events: [],
         lastSeen: null,
       };
@@ -349,7 +408,16 @@ export function buildReferralSummary(events, opts = {}) {
       !isSelfReferral &&
       event.otherUserUuidPrefix !== referrerUuid.slice(0, 8)
     ) {
-      group.otherAccountPrefixes.add(event.otherUserUuidPrefix);
+      group.browserAccountCandidates.push({
+        otherUserUuidPrefix: event.otherUserUuidPrefix,
+        at: event.at,
+        ipHash: event.ipHash,
+        uaHash: event.uaHash,
+        fingerprintHash: event.fingerprintHash,
+      });
+    }
+    if (REGISTRATION_EVENT_TYPES.has(event.type) && !isSelfReferral && event.referredUuidPrefix) {
+      group.registrationEvents.push(event);
     }
     if (event.ipHash) group.uniqueIps.add(event.ipHash);
     if (event.uaHash) group.uniqueUserAgents.add(event.uaHash);
@@ -370,6 +438,17 @@ export function buildReferralSummary(events, opts = {}) {
       group.lastSeen = event.at;
     }
   }
+
+  for (const group of groups.values()) {
+    group.sameBrowserRegistrations = buildSameBrowserRegistrations(
+      group.browserAccountCandidates,
+      group.registrationEvents,
+    );
+  }
+  totals.multiAccountDetections = [...groups.values()].reduce(
+    (sum, group) => sum + group.sameBrowserRegistrations.length,
+    0,
+  );
 
   const referrers = [...groups.values()].map((group) => {
     const risk = scoreReferrer(group);

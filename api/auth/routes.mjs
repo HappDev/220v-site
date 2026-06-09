@@ -151,6 +151,7 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid, isR
           await recordReferralEvent("ref_send_code", req, {
             referrerUuid: parsed.data.ref_uuid,
             referredEmailHash: emailHash(email),
+            fingerprint: parsed.data.fingerprint,
           });
         }
 
@@ -264,6 +265,7 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid, isR
             referredUuidPrefix: userUuid.slice(0, 8),
             reason: "referrer_points_blocked",
             selfReferral: referrerUuid === userUuid,
+            fingerprint: parsed.data.fingerprint,
           });
         } else if (refCredit && refCredit.credited === false) {
           await recordReferralEvent("ref_credit_skipped", req, {
@@ -272,6 +274,7 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid, isR
             referredUuidPrefix: userUuid.slice(0, 8),
             reason: refCredit.reason || "unknown",
             selfReferral: referrerUuid === userUuid,
+            fingerprint: parsed.data.fingerprint,
           });
         } else if (referrerUuid === userUuid) {
           await recordReferralEvent("ref_self_referral", req, {
@@ -279,12 +282,14 @@ export function createAuthRouter({ mailer, loadUserProfile, extractUserUuid, isR
             referredEmailHash: emailHash(email),
             referredUuidPrefix: userUuid.slice(0, 8),
             selfReferral: true,
+            fingerprint: parsed.data.fingerprint,
           });
         } else {
           await recordReferralEvent("ref_verify_ok", req, {
             referrerUuid,
             referredEmailHash: emailHash(email),
             referredUuidPrefix: userUuid.slice(0, 8),
+            fingerprint: parsed.data.fingerprint,
           });
         }
       }

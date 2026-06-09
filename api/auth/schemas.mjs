@@ -15,6 +15,7 @@ export const sendCodeSchema = z.object({
     .trim()
     .regex(REF_UUID_RE, "Invalid ref_uuid")
     .optional(),
+  fingerprint: z.string().trim().max(256).optional(),
 });
 
 export const verifySchema = z.object({
@@ -25,4 +26,5 @@ export const verifySchema = z.object({
     .trim()
     .regex(REF_UUID_RE, "Invalid ref_uuid")
     .optional(),
+  fingerprint: z.string().trim().max(256).optional(),
 });
