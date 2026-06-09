@@ -3703,11 +3703,12 @@ body.landing-no-scroll { overflow: hidden; }
   gap: 8px;
 }
 
-.landing-root .dash-referrals-requests__title {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
+.landing-root .dash-referrals-requests-card {
+  margin-top: 16px;
+}
+
+.landing-root .dash-referrals-requests-card .dash-referrals-requests {
+  margin-top: 0;
 }
 
 .landing-root .dash-referrals-requests__item {

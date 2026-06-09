@@ -685,25 +685,35 @@ const Referrals = () => {
                       <p className="dash-referrals-rewards__hint">
                         10 баллов = 1 день. Призы можно выбрать из списка.
                       </p>
-                      {exchangeRequests.length > 0 ? (
-                        <div className="dash-referrals-requests" aria-label="Активные заявки на обмен">
-                          <p className="dash-referrals-requests__title">Активные заявки</p>
-                          {exchangeRequests.map((request) => (
-                            <div className="dash-referrals-requests__item" key={request.id}>
-                              <span>
-                                <strong>{formatExchangeRequestTitle(request)}</strong>
-                                <span>{request.points} баллов</span>
-                              </span>
-                              <time dateTime={request.createdAt || undefined}>
-                                {request.createdAt ? formatDateTime(request.createdAt) : "—"}
-                              </time>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
                     </div>
                   </section>
                 </div>
+
+                {exchangeRequests.length > 0 ? (
+                  <section className="dash-card dash-referrals-requests-card">
+                    <header className="dash-card__head">
+                      <div className="dash-card__head-text">
+                        <div className="dash-card__title">Активные заявки</div>
+                        <div className="dash-card__desc">Операторы обработают их в течение суток</div>
+                      </div>
+                    </header>
+                    <div className="dash-card__body">
+                      <div className="dash-referrals-requests" aria-label="Активные заявки на обмен">
+                        {exchangeRequests.map((request) => (
+                          <div className="dash-referrals-requests__item" key={request.id}>
+                            <span>
+                              <strong>{formatExchangeRequestTitle(request)}</strong>
+                              <span>{request.points} баллов</span>
+                            </span>
+                            <time dateTime={request.createdAt || undefined}>
+                              {request.createdAt ? formatDateTime(request.createdAt) : "—"}
+                            </time>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                ) : null}
 
                 <section className="dash-card dash-referrals-history">
                   <header className="dash-card__head">
