@@ -15,6 +15,15 @@ import { checkoutSessionLimiter, refClickIpLimiter } from "./http/rateLimit.mjs"
 import { recordReferralEvent, queryReferralEvents } from "./referrals/events.mjs";
 import { buildReferralRiskForReferrer, buildReferralSummary } from "./referrals/summary.mjs";
 import {
+  closeReferralExchangeRequest,
+  createReferralExchangeRequest,
+  getPendingReferralExchangePoints,
+  getReferralExchangeRequest,
+  listReferralExchangeRequests,
+  withReferralExchangeRequestLock,
+  withReferralExchangeUserLock,
+} from "./referrals/exchangeRequests.mjs";
+import {
   getReferralUserStatus,
   getReferralUserStatuses,
   isReferralUserPointsBlocked,
@@ -71,6 +80,27 @@ const checkoutSchema = z.object({
   product_key: z.enum(["sub_1m", "sub_6m", "sub_12m", "traffic_20gb", "traffic_50gb"]),
   payment_method: z.union([z.number().int(), z.string()]),
 });
+
+const referralExchangeRequestSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("days"),
+    days: z.number().int().positive().max(365),
+    points: z.number().int().positive(),
+  }),
+  z.object({
+    type: z.literal("prize"),
+    prizeId: z.string().trim().min(1).max(80),
+    prizeTitle: z.string().trim().min(1).max(160),
+    details: z.string().trim().min(1).max(1000),
+    points: z.number().int().positive(),
+  }),
+]);
+const REFERRAL_POINTS_PER_DAY = 10;
+const REFERRAL_PRIZES = new Map([
+  ["airpods-3", { title: "Apple AirPods 3", points: 18000 }],
+  ["phone-card-1000", { title: "1000 руб на баланс телефона или карту", points: 1000 }],
+  ["phone-card-500", { title: "500 руб на баланс телефона или карту", points: 500 }],
+]);
 
 // --- Business constants (unchanged) ---
 
@@ -342,6 +372,27 @@ async function debitRmwReferralPoints(userUuid, { amount, comment, force = false
   }
 
   return data;
+}
+
+function extractRmwTransactionId(data) {
+  const raw =
+    data?.transaction?.id ??
+    data?.transactionId ??
+    data?.transaction_id ??
+    data?.id ??
+    null;
+  if (raw === null || raw === undefined || raw === "") return "";
+  return String(raw);
+}
+
+function formatExchangeRequestComment(request, operatorComment = "") {
+  const payload = request.payload || {};
+  const base =
+    request.type === "days"
+      ? `Обмен реферальных баллов: ${payload.days || "—"} дн.`
+      : `Обмен реферальных баллов: ${payload.prizeTitle || payload.prizeId || "приз"}`;
+  const suffix = operatorComment.trim() ? `; ${operatorComment.trim()}` : "";
+  return `${base}${suffix}`;
 }
 
 async function getRmwBillingMeta({ allowCache = true } = {}) {
@@ -911,6 +962,92 @@ app.get("/api/admin/referrals/summary", requireAdminToken, async (req, res) => {
   }
 });
 
+app.get("/api/admin/referrals/exchange-requests", requireAdminToken, async (req, res) => {
+  try {
+    const status = String(req.query.status || "pending").trim();
+    const items = await listReferralExchangeRequests({ status });
+    return res.json({ items });
+  } catch (err) {
+    if (err.status === 400) {
+      return clientError(res, 400, "Некорректный статус заявки");
+    }
+    return serverError(res, req, err);
+  }
+});
+
+app.post("/api/admin/referrals/exchange-requests/:id/approve", requireAdminToken, async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!id) return clientError(res, 400, "Некорректный ID заявки");
+    const operatorComment = typeof req.body?.operatorComment === "string" ? req.body.operatorComment.trim() : "";
+
+    const result = await withReferralExchangeRequestLock(id, async () => {
+      const request = await getReferralExchangeRequest(id);
+      if (!request) {
+        const err = new Error("Exchange request not found");
+        err.status = 404;
+        throw err;
+      }
+      if (request.status !== "pending") {
+        const err = new Error("Exchange request already closed");
+        err.status = 409;
+        throw err;
+      }
+
+      const debitData = await debitRmwReferralPoints(request.referrerUuid, {
+        amount: request.points,
+        comment: formatExchangeRequestComment(request, operatorComment),
+        force: false,
+      });
+      const closed = await closeReferralExchangeRequest(id, {
+        status: "approved",
+        operatorComment,
+        rmwTransactionId: extractRmwTransactionId(debitData),
+      });
+      return { request: closed, debit: debitData };
+    });
+
+    return res.json(result);
+  } catch (err) {
+    if (err.status === 404) {
+      return clientError(res, 404, "Заявка не найдена");
+    }
+    if (err.status === 409) {
+      return clientError(res, 409, "Заявка уже обработана или обрабатывается");
+    }
+    const status = err.status || 502;
+    return clientError(res, status, err.publicMessage || "Не удалось одобрить заявку");
+  }
+});
+
+app.post("/api/admin/referrals/exchange-requests/:id/reject", requireAdminToken, async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!id) return clientError(res, 400, "Некорректный ID заявки");
+    const operatorComment = typeof req.body?.operatorComment === "string" ? req.body.operatorComment.trim() : "";
+
+    const request = await withReferralExchangeRequestLock(id, async () => {
+      const existing = await getReferralExchangeRequest(id);
+      if (!existing) {
+        const err = new Error("Exchange request not found");
+        err.status = 404;
+        throw err;
+      }
+      return closeReferralExchangeRequest(id, { status: "rejected", operatorComment });
+    });
+
+    return res.json({ request });
+  } catch (err) {
+    if (err.status === 404) {
+      return clientError(res, 404, "Заявка не найдена");
+    }
+    if (err.status === 409) {
+      return clientError(res, 409, "Заявка уже обработана или обрабатывается");
+    }
+    return serverError(res, req, err);
+  }
+});
+
 app.get("/api/admin/referrals/users/:uuid", requireAdminToken, async (req, res) => {
   try {
     const uuid = assertValidUuid(req.params.uuid);
@@ -1049,6 +1186,92 @@ app.get("/api/me/referrals/status", requireSession, async (req, res) => {
     }
     req.log.warn({ err, status }, "referral status check failed");
     return clientError(res, status, "Не удалось проверить статус реферальной программы");
+  }
+});
+
+app.get("/api/me/referrals/exchange-requests", requireSession, async (req, res) => {
+  try {
+    const userUuid = assertValidUuid(req.session.userUuid);
+    const items = await listReferralExchangeRequests({ status: "pending", referrerUuid: userUuid });
+    return res.json({ items });
+  } catch (err) {
+    if (err?.message === "Invalid user UUID") {
+      return clientError(res, 400, "Некорректный UUID пользователя");
+    }
+    return serverError(res, req, err);
+  }
+});
+
+app.post("/api/me/referrals/exchange-requests", requireSession, async (req, res) => {
+  try {
+    const userUuid = assertValidUuid(req.session.userUuid);
+    const parsed = referralExchangeRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return clientError(res, 400, "Некорректная заявка на обмен");
+    }
+
+    const requestInput = parsed.data;
+    if (requestInput.type === "days" && requestInput.points !== requestInput.days * REFERRAL_POINTS_PER_DAY) {
+      return clientError(res, 400, "Некорректная стоимость обмена дней");
+    }
+    const prize = requestInput.type === "prize" ? REFERRAL_PRIZES.get(requestInput.prizeId) : null;
+    if (requestInput.type === "prize" && (!prize || requestInput.points !== prize.points)) {
+      return clientError(res, 400, "Некорректный приз или стоимость обмена");
+    }
+
+    const events = await queryReferralEvents({ referrerUuid: userUuid, limit: 5000 });
+    const risk = buildReferralRiskForReferrer(events, userUuid);
+    const status = await getReferralUserStatus(userUuid);
+    if (status.pointsBlocked || risk.riskLevel === "critical" || risk.riskLevel === "high") {
+      return clientError(res, 403, "Списание/обмен баллов недоступны. Обратитесь в техническую поддержку.");
+    }
+
+    const rmwUrl = rmwBaseUrl();
+    const rmwKey = rmwApiKey();
+    if (!rmwUrl || !rmwKey) {
+      return clientError(res, 500, "Сервис рефералов временно недоступен");
+    }
+
+    const request = await withReferralExchangeUserLock(userUuid, async () => {
+      const pointsData = await fetchRmwReferralPoints(userUuid, { page: 1, limit: 1 });
+      const balance = typeof pointsData?.balance === "number" ? pointsData.balance : 0;
+      const pendingPoints = await getPendingReferralExchangePoints(userUuid);
+      if (requestInput.points + pendingPoints > balance) {
+        const err = new Error(
+          `Недостаточно баллов с учетом активных заявок: нужно ${requestInput.points + pendingPoints}, доступно ${balance}.`,
+        );
+        err.status = 400;
+        err.publicMessage = err.message;
+        throw err;
+      }
+
+      const payload =
+        requestInput.type === "days"
+          ? { days: requestInput.days }
+          : {
+              prizeId: requestInput.prizeId,
+              prizeTitle: prize.title,
+              details: requestInput.details,
+            };
+      return createReferralExchangeRequest({
+        referrerUuid: userUuid,
+        email: req.session.email || "",
+        type: requestInput.type,
+        points: requestInput.points,
+        payload,
+      });
+    });
+    return res.status(201).json({ request });
+  } catch (err) {
+    const status = err.status || 502;
+    if (err?.message === "Invalid user UUID") {
+      return clientError(res, 400, "Некорректный UUID пользователя");
+    }
+    if (err.publicMessage) {
+      return clientError(res, status, err.publicMessage);
+    }
+    req.log.warn({ err, status }, "referral exchange request failed");
+    return clientError(res, status, "Не удалось создать заявку на обмен");
   }
 });
 

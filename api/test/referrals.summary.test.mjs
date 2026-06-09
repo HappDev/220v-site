@@ -85,6 +85,24 @@ function getSummary(query = "") {
     .set("X-Admin-Token", "admin-test-token");
 }
 
+function mockReferralPointsFetch({ balance = 100, items = [] } = {}) {
+  globalThis.fetch = async (url, options) => {
+    assert.match(String(url), /\/v1\/users\/.+\/referral-points\?page=1&limit=1$/);
+    assert.equal(options.headers["X-Api-Key"], process.env.RMW_API_KEY);
+    return new Response(
+      JSON.stringify({
+        balance,
+        items,
+        page: 1,
+        limit: 1,
+        total: items.length,
+        total_pages: items.length > 0 ? 1 : 0,
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  };
+}
+
 describe("referral admin summary", () => {
   before(async () => {
     await redis.flushall();
@@ -508,5 +526,211 @@ describe("referral admin summary", () => {
     assert.equal(res.status, 200);
     assert.equal(res.body.riskLevel, "high");
     assert.equal(res.body.blocked, true);
+  });
+
+  it("creates referral exchange requests for days and prizes", async () => {
+    mockReferralPointsFetch({ balance: 2000 });
+    const agent = await createSessionAgent(REF_A);
+
+    const daysRes = await agent
+      .post("/api/me/referrals/exchange-requests")
+      .send({ type: "days", days: 3, points: 30 });
+
+    assert.equal(daysRes.status, 201);
+    assert.equal(daysRes.body.request.type, "days");
+    assert.equal(daysRes.body.request.points, 30);
+    assert.equal(daysRes.body.request.payload.days, 3);
+
+    const prizeRes = await agent
+      .post("/api/me/referrals/exchange-requests")
+      .send({
+        type: "prize",
+        prizeId: "phone-card-500",
+        prizeTitle: "500 руб на баланс телефона или карту",
+        details: "+79990000000",
+        points: 500,
+      });
+
+    assert.equal(prizeRes.status, 201);
+    assert.equal(prizeRes.body.request.type, "prize");
+    assert.equal(prizeRes.body.request.payload.details, "+79990000000");
+
+    const myRequests = await agent.get("/api/me/referrals/exchange-requests");
+    assert.equal(myRequests.status, 200);
+    assert.equal(myRequests.body.items.length, 2);
+  });
+
+  it("rejects exchange request creation when pending requests exceed current balance", async () => {
+    mockReferralPointsFetch({ balance: 40 });
+    const agent = await createSessionAgent(REF_A);
+
+    const firstRes = await agent
+      .post("/api/me/referrals/exchange-requests")
+      .send({ type: "days", days: 3, points: 30 });
+    assert.equal(firstRes.status, 201);
+
+    const secondRes = await agent
+      .post("/api/me/referrals/exchange-requests")
+      .send({ type: "days", days: 2, points: 20 });
+    assert.equal(secondRes.status, 400);
+    assert.match(secondRes.body.error, /Недостаточно баллов/);
+  });
+
+  it("rejects prize exchange requests with tampered cost", async () => {
+    mockReferralPointsFetch({ balance: 2000 });
+    const agent = await createSessionAgent(REF_A);
+
+    const res = await agent
+      .post("/api/me/referrals/exchange-requests")
+      .send({
+        type: "prize",
+        prizeId: "phone-card-1000",
+        prizeTitle: "1000 руб на баланс телефона или карту",
+        details: "+79990000000",
+        points: 1,
+      });
+
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /Некорректный приз/);
+  });
+
+  it("blocks exchange request creation for points-blocked users", async () => {
+    globalThis.fetch = async () => {
+      throw new Error("RMW should not be called");
+    };
+    await request(app)
+      .post(`/api/admin/referrals/users/${REF_A}/points/debit`)
+      .set("X-Admin-Token", "admin-test-token")
+      .send({ pointsBlocked: true });
+
+    const agent = await createSessionAgent(REF_A);
+    const res = await agent
+      .post("/api/me/referrals/exchange-requests")
+      .send({ type: "days", days: 1, points: 10 });
+
+    assert.equal(res.status, 403);
+    assert.match(res.body.error, /Списание\/обмен баллов недоступны/);
+  });
+
+  it("shows pending exchange requests to admin", async () => {
+    mockReferralPointsFetch({ balance: 100 });
+    const agent = await createSessionAgent(REF_A);
+    await agent
+      .post("/api/me/referrals/exchange-requests")
+      .send({ type: "days", days: 2, points: 20 });
+
+    const res = await request(app)
+      .get("/api/admin/referrals/exchange-requests?status=pending")
+      .set("X-Admin-Token", "admin-test-token");
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.items.length, 1);
+    assert.equal(res.body.items[0].referrerUuid, REF_A);
+    assert.equal(res.body.items[0].status, "pending");
+  });
+
+  it("approves exchange requests through RMW debit and prevents repeated approval", async () => {
+    mockReferralPointsFetch({ balance: 100 });
+    const agent = await createSessionAgent(REF_A);
+    const createRes = await agent
+      .post("/api/me/referrals/exchange-requests")
+      .send({ type: "days", days: 2, points: 20 });
+    const requestId = createRes.body.request.id;
+
+    let debitCalls = 0;
+    globalThis.fetch = async (url, options) => {
+      debitCalls += 1;
+      assert.equal(url, `${process.env.RMW_API_URL}/v1/users/${REF_A}/referral-points/debit`);
+      assert.equal(options.method, "POST");
+      assert.deepEqual(JSON.parse(options.body), {
+        amount: 20,
+        comment: "Обмен реферальных баллов: 2 дн.; added manually",
+      });
+      return new Response(
+        JSON.stringify({
+          balance: 80,
+          transaction: { id: 55, amount: -20, reason: "manual_debit", created_at: "2026-01-03T00:00:00Z" },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    const approveRes = await request(app)
+      .post(`/api/admin/referrals/exchange-requests/${requestId}/approve`)
+      .set("X-Admin-Token", "admin-test-token")
+      .send({ operatorComment: "added manually" });
+
+    assert.equal(approveRes.status, 200);
+    assert.equal(approveRes.body.request.status, "approved");
+    assert.equal(approveRes.body.debit.balance, 80);
+    assert.equal(debitCalls, 1);
+
+    const repeatRes = await request(app)
+      .post(`/api/admin/referrals/exchange-requests/${requestId}/approve`)
+      .set("X-Admin-Token", "admin-test-token")
+      .send({});
+
+    assert.equal(repeatRes.status, 409);
+    assert.equal(debitCalls, 1);
+
+    const pendingRes = await request(app)
+      .get("/api/admin/referrals/exchange-requests?status=pending")
+      .set("X-Admin-Token", "admin-test-token");
+    assert.equal(pendingRes.body.items.length, 0);
+  });
+
+  it("keeps exchange request pending when RMW debit fails", async () => {
+    mockReferralPointsFetch({ balance: 100 });
+    const agent = await createSessionAgent(REF_A);
+    const createRes = await agent
+      .post("/api/me/referrals/exchange-requests")
+      .send({ type: "days", days: 2, points: 20 });
+    const requestId = createRes.body.request.id;
+
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ error: "not enough points" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+
+    const approveRes = await request(app)
+      .post(`/api/admin/referrals/exchange-requests/${requestId}/approve`)
+      .set("X-Admin-Token", "admin-test-token")
+      .send({});
+
+    assert.equal(approveRes.status, 400);
+
+    const pendingRes = await request(app)
+      .get("/api/admin/referrals/exchange-requests?status=pending")
+      .set("X-Admin-Token", "admin-test-token");
+    assert.equal(pendingRes.body.items.length, 1);
+    assert.equal(pendingRes.body.items[0].id, requestId);
+  });
+
+  it("rejects exchange requests without calling RMW", async () => {
+    mockReferralPointsFetch({ balance: 100 });
+    const agent = await createSessionAgent(REF_A);
+    const createRes = await agent
+      .post("/api/me/referrals/exchange-requests")
+      .send({ type: "days", days: 2, points: 20 });
+    const requestId = createRes.body.request.id;
+
+    globalThis.fetch = async () => {
+      throw new Error("RMW should not be called");
+    };
+
+    const rejectRes = await request(app)
+      .post(`/api/admin/referrals/exchange-requests/${requestId}/reject`)
+      .set("X-Admin-Token", "admin-test-token")
+      .send({ operatorComment: "manual reject" });
+
+    assert.equal(rejectRes.status, 200);
+    assert.equal(rejectRes.body.request.status, "rejected");
+
+    const repeatRes = await request(app)
+      .post(`/api/admin/referrals/exchange-requests/${requestId}/reject`)
+      .set("X-Admin-Token", "admin-test-token")
+      .send({});
+    assert.equal(repeatRes.status, 409);
   });
 });

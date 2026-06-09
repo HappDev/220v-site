@@ -3697,6 +3697,47 @@ body.landing-no-scroll { overflow: hidden; }
   text-align: center;
 }
 
+.landing-root .dash-referrals-requests {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.landing-root .dash-referrals-requests__title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.landing-root .dash-referrals-requests__item {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.landing-root .dash-referrals-requests__item > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.landing-root .dash-referrals-requests__item strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.landing-root .dash-referrals-requests__item time,
+.landing-root .dash-referrals-requests__item span span {
+  color: var(--muted);
+}
+
 /* History section gets full width when sitting under the 3-col grid. */
 .landing-root .dash-referrals-history {
   margin-top: 16px;

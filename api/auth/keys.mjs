@@ -12,6 +12,9 @@ export const refEventsFingerprintIndexKey = (fingerprintHash) => `${PREFIX}ref:e
 export const refStatsReferrerKey = (refUuid) => `${PREFIX}ref:stats:referrer:${refUuid}`;
 export const refClickSeenKey = (refUuid, ipHash) => `${PREFIX}ref:clickseen:${refUuid}:${ipHash}`;
 export const refUserStatusKey = (refUuid) => `${PREFIX}ref:user_status:${refUuid}`;
+export const refExchangeRequestKey = (id) => `${PREFIX}ref:exchange_request:${id}`;
+export const refExchangeRequestsPendingKey = () => `${PREFIX}ref:exchange_requests:pending`;
+export const refExchangeRequestsUserKey = (refUuid) => `${PREFIX}ref:exchange_requests:by_referrer:${refUuid}`;
 
 export const SCAN_PATTERNS = {
   otp: `${PREFIX}otp:*`,
@@ -32,6 +35,9 @@ export const SCAN_PATTERNS = {
   refStatsReferrer: `${PREFIX}ref:stats:referrer:*`,
   refClickSeen: `${PREFIX}ref:clickseen:*`,
   refUserStatus: `${PREFIX}ref:user_status:*`,
+  refExchangeRequests: `${PREFIX}ref:exchange_request:*`,
+  refExchangeRequestsPending: `${PREFIX}ref:exchange_requests:pending`,
+  refExchangeRequestsByReferrer: `${PREFIX}ref:exchange_requests:by_referrer:*`,
   rlRefClickIp: `${PREFIX}rl:refclick:ip:*`,
 };
 

@@ -142,6 +142,33 @@ type DebitReferralPointsResponse = {
   status?: ReferralUserStatus;
 };
 
+type ReferralExchangeRequest = {
+  id: string;
+  referrerUuid: string;
+  email?: string | null;
+  type: "days" | "prize";
+  points: number;
+  status: "pending" | "approved" | "rejected";
+  payload?: {
+    days?: number;
+    prizeId?: string;
+    prizeTitle?: string;
+    details?: string;
+  };
+  createdAt?: string | null;
+};
+
+type ReferralExchangeRequestsResponse = {
+  items: ReferralExchangeRequest[];
+};
+
+type ReferralExchangeActionResponse = {
+  request?: ReferralExchangeRequest;
+  debit?: {
+    balance?: number;
+  };
+};
+
 type ReferralSummary = {
   generatedAt: string;
   window: { days: number | null; since: string | null; until: string };
@@ -237,6 +264,20 @@ function formatReferralPointReason(item: ReferralPointItem): string {
     return comment ? `Списание баллов: ${comment}` : "Списание баллов";
   }
   return item.reason || "—";
+}
+
+function formatExchangeRequestKind(request: ReferralExchangeRequest): string {
+  if (request.type === "days") {
+    return `Дни подписки${Number.isInteger(request.payload?.days) ? `: ${request.payload?.days}` : ""}`;
+  }
+  return request.payload?.prizeTitle || "Приз";
+}
+
+function formatExchangeRequestDetails(request: ReferralExchangeRequest): string {
+  if (request.type === "days") {
+    return "Оператор вручную добавляет дни подписки после одобрения.";
+  }
+  return request.payload?.details || "Данные получения не указаны";
 }
 
 function hasReferralStatus(status?: ReferralUserStatus | null): status is ReferralUserStatus {
@@ -1135,7 +1176,39 @@ export default function AdminReferrals() {
   const [riskFilter, setRiskFilter] = useState<RiskLevel | "all">("all");
   const [eventType, setEventType] = useState("all");
   const [referrerFilter, setReferrerFilter] = useState("");
+  const [exchangeRequests, setExchangeRequests] = useState<ReferralExchangeRequest[]>([]);
+  const [exchangeRequestsLoading, setExchangeRequestsLoading] = useState(false);
+  const [exchangeRequestsError, setExchangeRequestsError] = useState("");
+  const [exchangeActionId, setExchangeActionId] = useState("");
+  const [exchangeComments, setExchangeComments] = useState<Record<string, string>>({});
   const didAutoLoad = useRef(false);
+
+  const loadExchangeRequests = useCallback(async (adminToken = token.trim()) => {
+    const trimmedToken = adminToken.trim();
+    if (!trimmedToken) return;
+    setExchangeRequestsLoading(true);
+    setExchangeRequestsError("");
+    try {
+      const res = await fetch(`${apiBase}/admin/referrals/exchange-requests?status=pending`, {
+        headers: { "X-Admin-Token": trimmedToken },
+        credentials: "include",
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        const message =
+          body && typeof body === "object" && "error" in body && typeof body.error === "string"
+            ? body.error
+            : `Ошибка ${res.status}`;
+        throw new Error(message);
+      }
+      const data = body as ReferralExchangeRequestsResponse;
+      setExchangeRequests(Array.isArray(data.items) ? data.items : []);
+    } catch (err) {
+      setExchangeRequestsError(asErrorMessage(err));
+    } finally {
+      setExchangeRequestsLoading(false);
+    }
+  }, [token]);
 
   const load = useCallback(async () => {
     const trimmedToken = token.trim();
@@ -1164,12 +1237,61 @@ export default function AdminReferrals() {
       }
       setSummary(body as ReferralSummary);
       localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, trimmedToken);
+      void loadExchangeRequests(trimmedToken);
     } catch (err) {
       setError(asErrorMessage(err));
     } finally {
       setLoading(false);
     }
-  }, [eventType, limit, period, token]);
+  }, [limit, loadExchangeRequests, period, token]);
+
+  const processExchangeRequest = useCallback(
+    async (requestId: string, action: "approve" | "reject") => {
+      const trimmedToken = token.trim();
+      if (!trimmedToken) {
+        setExchangeRequestsError("Введите ADMIN_REDIS_TOKEN");
+        return;
+      }
+      setExchangeActionId(requestId);
+      setExchangeRequestsError("");
+      try {
+        const res = await fetch(`${apiBase}/admin/referrals/exchange-requests/${encodeURIComponent(requestId)}/${action}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": trimmedToken,
+          },
+          credentials: "include",
+          body: JSON.stringify({ operatorComment: (exchangeComments[requestId] || "").trim() }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message =
+            body && typeof body === "object" && "error" in body && typeof body.error === "string"
+              ? body.error
+              : `Ошибка ${res.status}`;
+          throw new Error(message);
+        }
+        const data = body as ReferralExchangeActionResponse;
+        if (action === "approve") {
+          toast.success(`Заявка одобрена. Баланс: ${data.debit?.balance ?? "—"}`);
+        } else {
+          toast.success("Заявка отклонена");
+        }
+        setExchangeComments((prev) => {
+          const next = { ...prev };
+          delete next[requestId];
+          return next;
+        });
+        await loadExchangeRequests(trimmedToken);
+      } catch (err) {
+        setExchangeRequestsError(asErrorMessage(err));
+      } finally {
+        setExchangeActionId("");
+      }
+    },
+    [exchangeComments, loadExchangeRequests, token],
+  );
 
   useEffect(() => {
     if (didAutoLoad.current) return;
@@ -1272,6 +1394,98 @@ export default function AdminReferrals() {
             </select>
           </label>
         </div>
+      </section>
+
+      <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <div className="mr-auto">
+            <h2 className="text-lg font-bold text-foreground">Активные заявки на обмен</h2>
+            <p className="text-sm text-muted-foreground">
+              Операторы вручную выдают дни или призы, затем одобряют заявку для списания баллов.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => void loadExchangeRequests()}
+            disabled={exchangeRequestsLoading || !token.trim()}
+          >
+            {exchangeRequestsLoading ? "Обновляем..." : "Обновить"}
+          </button>
+        </div>
+        {exchangeRequestsError ? (
+          <p className="mb-3 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{exchangeRequestsError}</p>
+        ) : null}
+        {exchangeRequestsLoading && exchangeRequests.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Загрузка заявок...</p>
+        ) : exchangeRequests.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Активных заявок нет</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Создана</TableHead>
+                  <TableHead>Пользователь</TableHead>
+                  <TableHead>Заявка</TableHead>
+                  <TableHead>Детали</TableHead>
+                  <TableHead>Баллы</TableHead>
+                  <TableHead>Комментарий</TableHead>
+                  <TableHead className="text-right">Действия</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {exchangeRequests.map((request) => (
+                  <TableRow key={request.id}>
+                    <TableCell className="whitespace-nowrap text-xs">{formatDate(request.createdAt)}</TableCell>
+                    <TableCell className="text-xs">
+                      <div className="space-y-1">
+                        <CopyableText value={request.referrerUuid} label="UUID" displayValue={shortenUuid(request.referrerUuid)} />
+                        {request.email ? <CopyableText value={request.email} label="Email" className="max-w-[220px]" /> : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs font-semibold">{formatExchangeRequestKind(request)}</TableCell>
+                    <TableCell className="max-w-[280px] whitespace-pre-wrap text-xs text-muted-foreground">
+                      {formatExchangeRequestDetails(request)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs font-bold">{request.points}</TableCell>
+                    <TableCell className="min-w-[220px]">
+                      <Textarea
+                        value={exchangeComments[request.id] || ""}
+                        onChange={(event) =>
+                          setExchangeComments((prev) => ({ ...prev, [request.id]: event.target.value }))
+                        }
+                        placeholder="Комментарий оператора"
+                        disabled={exchangeActionId === request.id}
+                        className="min-h-20 text-xs"
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={Boolean(exchangeActionId)}
+                          onClick={() => void processExchangeRequest(request.id, "approve")}
+                        >
+                          {exchangeActionId === request.id ? "..." : "Одобрить"}
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={Boolean(exchangeActionId)}
+                          onClick={() => void processExchangeRequest(request.id, "reject")}
+                        >
+                          Отклонить
+                        </button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </section>
 
       {summary && (

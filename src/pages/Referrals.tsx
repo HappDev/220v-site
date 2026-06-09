@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { ArrowRight, Coins, Copy, Gift, Loader2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import { getReferralsProgramStarted, setReferralsProgramStarted } from "@/lib/referralsStorage";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import { useDashboardSidebarItems } from "@/hooks/useDashboardSidebarItems";
@@ -45,6 +45,28 @@ type ReferralStatusResponse = {
   status?: {
     pointsBlocked?: boolean;
   };
+};
+
+type ReferralExchangeRequest = {
+  id: string;
+  type: "days" | "prize";
+  points: number;
+  status: "pending" | "approved" | "rejected";
+  payload?: {
+    days?: number;
+    prizeId?: string;
+    prizeTitle?: string;
+    details?: string;
+  };
+  createdAt?: string | null;
+};
+
+type ReferralExchangeRequestsResponse = {
+  items: ReferralExchangeRequest[];
+};
+
+type CreateReferralExchangeRequestResponse = {
+  request: ReferralExchangeRequest;
 };
 
 const PAGE_SIZE = 20;
@@ -140,6 +162,14 @@ function formatAmount(amount: number): string {
   return String(amount);
 }
 
+function formatExchangeRequestTitle(request: ReferralExchangeRequest): string {
+  if (request.type === "days") {
+    const days = request.payload?.days;
+    return `Дни подписки${Number.isInteger(days) ? `: ${days}` : ""}`;
+  }
+  return request.payload?.prizeTitle || "Приз";
+}
+
 const Referrals = () => {
   const { email, items, handleLogout, userUuid, userLoading } = useDashboardSidebarItems();
   const [backendEligibility, setBackendEligibility] = useState<{ active: boolean; reason: string | null } | null>(null);
@@ -156,6 +186,7 @@ const Referrals = () => {
   const [exchangeBlockedOpen, setExchangeBlockedOpen] = useState(false);
   const [exchangeStatusChecking, setExchangeStatusChecking] = useState(false);
   const [referralPointsBlocked, setReferralPointsBlocked] = useState(false);
+  const [exchangeRequests, setExchangeRequests] = useState<ReferralExchangeRequest[]>([]);
   const [daysToExchange, setDaysToExchange] = useState("1");
   const [selectedPrizeId, setSelectedPrizeId] = useState<string | null>(null);
   const [prizeClaimDetails, setPrizeClaimDetails] = useState("");
@@ -195,6 +226,18 @@ const Referrals = () => {
     }
   }, []);
 
+  const fetchExchangeRequests = useCallback(async () => {
+    try {
+      const { data, error: apiError } = await apiGet<ReferralExchangeRequestsResponse>(
+        "/me/referrals/exchange-requests",
+      );
+      if (apiError) throw apiError;
+      setExchangeRequests(Array.isArray(data?.items) ? data.items : []);
+    } catch {
+      // Заявки не должны ломать всю страницу; ошибки покажем при отправке новой заявки.
+    }
+  }, []);
+
   useEffect(() => {
     if (userLoading) return;
     if (!userUuid) {
@@ -214,7 +257,8 @@ const Referrals = () => {
   useEffect(() => {
     if (!startedReady || !programStarted || !userUuid) return;
     void fetchHistory(1);
-  }, [startedReady, programStarted, userUuid, fetchHistory]);
+    void fetchExchangeRequests();
+  }, [startedReady, programStarted, userUuid, fetchHistory, fetchExchangeRequests]);
 
   const handleStartProgram = () => {
     if (!userUuid) {
@@ -333,6 +377,26 @@ const Referrals = () => {
     void fetchReferralStatus();
   }, [fetchReferralStatus, startedReady, userUuid]);
 
+  const createExchangeRequest = useCallback(
+    async (body: Record<string, unknown>) => {
+      const { data, error: apiError } = await apiPost<CreateReferralExchangeRequestResponse>(
+        "/me/referrals/exchange-requests",
+        body,
+      );
+      if (apiError) throw apiError;
+      if (!data?.request) {
+        throw new Error("Некорректный ответ сервера");
+      }
+      toast.success("Заявка создана", {
+        description: "Операторы обработают её в течение суток.",
+      });
+      void fetchHistory(1);
+      void fetchExchangeRequests();
+      return data.request;
+    },
+    [fetchExchangeRequests, fetchHistory],
+  );
+
   const handleOpenDaysExchange = async () => {
     if (await checkReferralExchangeAllowed()) {
       setDaysExchangeOpen(true);
@@ -363,10 +427,20 @@ const Referrals = () => {
       return;
     }
 
-    toast.success("Заявка на обмен дней принята", {
-      description: `Заглушка: ${exchangeDays} дн. за ${exchangeDaysCost} баллов.`,
-    });
-    setDaysExchangeOpen(false);
+    setExchangeStatusChecking(true);
+    try {
+      await createExchangeRequest({
+        type: "days",
+        days: exchangeDays,
+        points: exchangeDaysCost,
+      });
+      setDaysExchangeOpen(false);
+      setDaysToExchange("1");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Не удалось создать заявку");
+    } finally {
+      setExchangeStatusChecking(false);
+    }
   };
 
   const handlePrizeSelect = (prizeId: string) => {
@@ -405,13 +479,24 @@ const Referrals = () => {
       return;
     }
 
-    toast.success("Заявка на приз принята", {
-      description: `Заглушка: ${selectedPrize.title} за ${selectedPrize.cost} баллов.`,
-    });
-    setPrizesOpen(false);
-    setSelectedPrizeId(null);
-    setPrizeClaimDetails("");
-    setPrizeError("");
+    setExchangeStatusChecking(true);
+    try {
+      await createExchangeRequest({
+        type: "prize",
+        prizeId: selectedPrize.id,
+        prizeTitle: selectedPrize.title,
+        details: prizeClaimDetails.trim(),
+        points: selectedPrize.cost,
+      });
+      setPrizesOpen(false);
+      setSelectedPrizeId(null);
+      setPrizeClaimDetails("");
+      setPrizeError("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Не удалось создать заявку");
+    } finally {
+      setExchangeStatusChecking(false);
+    }
   };
 
   const showPageLoader = userLoading || !startedReady;
@@ -600,6 +685,22 @@ const Referrals = () => {
                       <p className="dash-referrals-rewards__hint">
                         10 баллов = 1 день. Призы можно выбрать из списка.
                       </p>
+                      {exchangeRequests.length > 0 ? (
+                        <div className="dash-referrals-requests" aria-label="Активные заявки на обмен">
+                          <p className="dash-referrals-requests__title">Активные заявки</p>
+                          {exchangeRequests.map((request) => (
+                            <div className="dash-referrals-requests__item" key={request.id}>
+                              <span>
+                                <strong>{formatExchangeRequestTitle(request)}</strong>
+                                <span>{request.points} баллов</span>
+                              </span>
+                              <time dateTime={request.createdAt || undefined}>
+                                {request.createdAt ? formatDateTime(request.createdAt) : "—"}
+                              </time>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </section>
                 </div>
