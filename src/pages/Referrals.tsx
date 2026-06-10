@@ -155,9 +155,8 @@ function formatReason(item: ReferralPointItem): string {
     const first = item.meta?.is_first ? " — первая оплата" : "";
     return `Оплата тарифа реферала${suffix}${first}`;
   }
-  if (item.reason === "referral_exchange_days") {
-    const days = Number(item.meta?.days);
-    return Number.isInteger(days) && days > 0 ? `Обмен баллов на дни: ${days}` : "Обмен баллов на дни";
+  if (item.reason === "exchange_for_days" || item.reason === "referral_exchange_days") {
+    return "Обмен баллов на дни";
   }
   return item.reason || "—";
 }
