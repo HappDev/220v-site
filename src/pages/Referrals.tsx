@@ -727,7 +727,12 @@ const Referrals = () => {
                           const comment = formatExchangeRequestComment(request);
                           const requestDate = exchangeRequestDate(request);
                           return (
-                            <div className="dash-referrals-requests__item" key={request.id}>
+                            <div
+                              className={`dash-referrals-requests__item${
+                                request.status === "rejected" ? " dash-referrals-requests__item--rejected" : ""
+                              }`}
+                              key={request.id}
+                            >
                               <div className="dash-referrals-requests__content">
                                 <div className="dash-referrals-requests__main">
                                   <strong>{formatExchangeRequestTitle(request)}</strong>

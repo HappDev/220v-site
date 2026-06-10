@@ -3722,6 +3722,11 @@ body.landing-no-scroll { overflow: hidden; }
   font-size: 12px;
 }
 
+.landing-root .dash-referrals-requests__item--rejected {
+  border-color: rgba(248, 113, 113, 0.42);
+  background: rgba(248, 113, 113, 0.12);
+}
+
 .landing-root .dash-referrals-requests__content {
   display: grid;
   min-width: 0;
