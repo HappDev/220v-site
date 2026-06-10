@@ -452,6 +452,37 @@ describe("referral admin summary", () => {
     assert.equal(refA.status.pointsBlocked, true);
   });
 
+  it("credits referrer points through RMW by UUID", async () => {
+    globalThis.fetch = async (url, options) => {
+      assert.equal(url, `${process.env.RMW_API_URL}/v1/users/${REF_A}/referral-points/credit`);
+      assert.equal(options.method, "POST");
+      assert.equal(options.headers["X-Api-Key"], process.env.RMW_API_KEY);
+      assert.deepEqual(JSON.parse(options.body), { amount: 25, comment: "manual bonus" });
+      return new Response(
+        JSON.stringify({
+          balance: 40,
+          transaction: {
+            id: 3,
+            amount: 25,
+            reason: "manual_credit",
+            meta: { comment: "manual bonus" },
+            created_at: "2026-01-02T00:00:00Z",
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    const res = await request(app)
+      .post(`/api/admin/referrals/users/${REF_A}/points/credit`)
+      .set("X-Admin-Token", "admin-test-token")
+      .send({ amount: 25, comment: "manual bonus" });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.balance, 40);
+    assert.equal(res.body.transaction.reason, "manual_credit");
+  });
+
   it("blocks referral points without calling RMW when debit fields are empty", async () => {
     let fetchCalled = false;
     globalThis.fetch = async () => {

@@ -267,6 +267,10 @@ function formatReferralPointReason(item: ReferralPointItem): string {
     const comment = item.meta?.comment?.trim();
     return comment ? `Списание баллов: ${comment}` : "Списание баллов";
   }
+  if (item.reason === "manual_credit") {
+    const comment = item.meta?.comment?.trim();
+    return comment ? `Начисление баллов: ${comment}` : "Начисление баллов";
+  }
   return item.reason || "—";
 }
 
@@ -581,6 +585,12 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
   const [debitPointsBlocked, setDebitPointsBlocked] = useState(false);
   const [debitLoading, setDebitLoading] = useState(false);
   const [debitError, setDebitError] = useState("");
+  const [creditOpen, setCreditOpen] = useState(false);
+  const [creditUuid, setCreditUuid] = useState("");
+  const [creditAmount, setCreditAmount] = useState("");
+  const [creditComment, setCreditComment] = useState("");
+  const [creditLoading, setCreditLoading] = useState(false);
+  const [creditError, setCreditError] = useState("");
   const [statusOverrides, setStatusOverrides] = useState<Record<string, ReferralUserStatus>>({});
 
   const loadUserEmail = useCallback(
@@ -709,6 +719,14 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
     setDebitOpen(true);
   }, []);
 
+  const openCreditDialog = useCallback((uuid: string) => {
+    setCreditUuid(uuid);
+    setCreditAmount("");
+    setCreditComment("");
+    setCreditError("");
+    setCreditOpen(true);
+  }, []);
+
   const submitDebitPoints = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -787,8 +805,68 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
     [debitAmount, debitComment, debitPointsBlocked, debitUuid, historyData?.page, historyUuid, loadReferralHistory, token],
   );
 
+  const submitCreditPoints = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const amount = Number(creditAmount.trim());
+      const comment = creditComment.trim();
+
+      if (!Number.isInteger(amount) || amount <= 0) {
+        setCreditError("Укажите положительное целое число баллов");
+        return;
+      }
+      if (!comment) {
+        setCreditError("Укажите причину начисления");
+        return;
+      }
+
+      setCreditLoading(true);
+      setCreditError("");
+      try {
+        const res = await fetch(`${apiBase}/admin/referrals/users/${encodeURIComponent(creditUuid)}/points/credit`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token.trim(),
+          },
+          credentials: "include",
+          body: JSON.stringify({ amount, comment }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message =
+            body && typeof body === "object" && "error" in body && typeof body.error === "string"
+              ? body.error
+              : `Ошибка ${res.status}`;
+          throw new Error(message);
+        }
+        const data = body as DebitReferralPointsResponse;
+        toast.success(`Начислено ${amount} баллов. Новый баланс: ${data.balance ?? "—"}`);
+        if (typeof data.balance === "number") {
+          setBalanceLookups((prev) => ({ ...prev, [creditUuid]: { loading: false, balance: data.balance } }));
+        } else {
+          setBalanceLookups((prev) => {
+            const current = prev[creditUuid];
+            if (typeof current?.balance !== "number") return prev;
+            return { ...prev, [creditUuid]: { loading: false, balance: current.balance + amount } };
+          });
+        }
+        setCreditOpen(false);
+        if (historyUuid === creditUuid) {
+          void loadReferralHistory(creditUuid, historyData?.page || 1);
+        }
+      } catch (err) {
+        setCreditError(asErrorMessage(err));
+      } finally {
+        setCreditLoading(false);
+      }
+    },
+    [creditAmount, creditComment, creditUuid, historyData?.page, historyUuid, loadReferralHistory, token],
+  );
+
   const selectedUserLookup = historyUuid ? userLookups[historyUuid] : null;
   const selectedDebitLookup = debitUuid ? userLookups[debitUuid] : null;
+  const selectedCreditLookup = creditUuid ? userLookups[creditUuid] : null;
 
   return (
     <>
@@ -941,6 +1019,13 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
                             </button>
                             <button
                               type="button"
+                              className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                              onClick={() => openCreditDialog(item.referrerUuid)}
+                            >
+                              Начислить баллы
+                            </button>
+                            <button
+                              type="button"
                               className="rounded-lg bg-destructive px-3 py-2 text-xs font-semibold text-destructive-foreground transition hover:bg-destructive/90"
                               onClick={() => openDebitDialog(item.referrerUuid)}
                             >
@@ -1077,6 +1162,78 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
               </button>
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={creditOpen} onOpenChange={setCreditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Начислить реферальные баллы</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-1">
+                <p>
+                  UUID:{" "}
+                  {creditUuid ? (
+                    <CopyableText value={creditUuid} label="UUID" displayValue={shortenUuid(creditUuid)} />
+                  ) : (
+                    "—"
+                  )}
+                </p>
+                {selectedCreditLookup?.email ? (
+                  <p>
+                    Email: <CopyableText value={selectedCreditLookup.email} label="Email" />
+                  </p>
+                ) : null}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+
+          <form className="space-y-4" onSubmit={submitCreditPoints}>
+            <label className="block text-sm font-semibold text-foreground">
+              Количество баллов
+              <input
+                type="number"
+                min="1"
+                step="1"
+                inputMode="numeric"
+                value={creditAmount}
+                onChange={(event) => setCreditAmount(event.target.value)}
+                placeholder="Например, 100"
+                className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                disabled={creditLoading}
+              />
+            </label>
+            <label className="block text-sm font-semibold text-foreground">
+              Причина начисления
+              <Textarea
+                value={creditComment}
+                onChange={(event) => setCreditComment(event.target.value)}
+                placeholder="Например: ручная корректировка, бонус"
+                disabled={creditLoading}
+                className="mt-1"
+              />
+            </label>
+            {creditError ? (
+              <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{creditError}</p>
+            ) : null}
+            <DialogFooter>
+              <button
+                type="button"
+                className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={creditLoading}
+                onClick={() => setCreditOpen(false)}
+              >
+                Отмена
+              </button>
+              <button
+                type="submit"
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={creditLoading}
+              >
+                {creditLoading ? "Начисляем..." : "Начислить"}
+              </button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
