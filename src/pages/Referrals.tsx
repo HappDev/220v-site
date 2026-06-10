@@ -52,6 +52,7 @@ type ReferralExchangeRequest = {
   type: "days" | "prize";
   points: number;
   status: "pending" | "approved" | "rejected";
+  operatorComment?: string | null;
   payload?: {
     days?: number;
     prizeId?: string;
@@ -59,6 +60,7 @@ type ReferralExchangeRequest = {
     details?: string;
   };
   createdAt?: string | null;
+  closedAt?: string | null;
 };
 
 type ReferralExchangeRequestsResponse = {
@@ -168,6 +170,20 @@ function formatExchangeRequestTitle(request: ReferralExchangeRequest): string {
     return `Дни подписки${Number.isInteger(days) ? `: ${days}` : ""}`;
   }
   return request.payload?.prizeTitle || "Приз";
+}
+
+function formatExchangeRequestStatus(request: ReferralExchangeRequest): string {
+  if (request.status === "approved") return "Одобрено";
+  if (request.status === "rejected") return "Отклонено";
+  return "На рассмотрении";
+}
+
+function formatExchangeRequestComment(request: ReferralExchangeRequest): string {
+  return typeof request.operatorComment === "string" ? request.operatorComment.trim() : "";
+}
+
+function exchangeRequestDate(request: ReferralExchangeRequest): string | null | undefined {
+  return request.closedAt || request.createdAt;
 }
 
 const Referrals = () => {
@@ -694,22 +710,30 @@ const Referrals = () => {
                     <header className="dash-card__head">
                       <div className="dash-card__head-text">
                         <div className="dash-card__title">Активные заявки</div>
-                        <div className="dash-card__desc">Операторы обработают их в течение суток</div>
+                        <div className="dash-card__desc">Активные и обработанные за 30 дней</div>
                       </div>
                     </header>
                     <div className="dash-card__body">
                       <div className="dash-referrals-requests" aria-label="Активные заявки на обмен">
-                        {exchangeRequests.map((request) => (
-                          <div className="dash-referrals-requests__item" key={request.id}>
-                            <span>
-                              <strong>{formatExchangeRequestTitle(request)}</strong>
-                              <span>{request.points} баллов</span>
-                            </span>
-                            <time dateTime={request.createdAt || undefined}>
-                              {request.createdAt ? formatDateTime(request.createdAt) : "—"}
-                            </time>
-                          </div>
-                        ))}
+                        {exchangeRequests.map((request) => {
+                          const comment = formatExchangeRequestComment(request);
+                          const requestDate = exchangeRequestDate(request);
+                          return (
+                            <div className="dash-referrals-requests__item" key={request.id}>
+                              <div className="dash-referrals-requests__content">
+                                <div className="dash-referrals-requests__main">
+                                  <strong>{formatExchangeRequestTitle(request)}</strong>
+                                  <span className="dash-referrals-requests__points">{request.points} баллов</span>
+                                </div>
+                                <div className="dash-referrals-requests__meta">{formatExchangeRequestStatus(request)}</div>
+                                {comment ? <div className="dash-referrals-requests__comment">{comment}</div> : null}
+                              </div>
+                              <time dateTime={requestDate || undefined}>
+                                {requestDate ? formatDateTime(requestDate) : "—"}
+                              </time>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </section>

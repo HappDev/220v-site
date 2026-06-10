@@ -149,6 +149,7 @@ type ReferralExchangeRequest = {
   type: "days" | "prize";
   points: number;
   status: "pending" | "approved" | "rejected";
+  operatorComment?: string | null;
   payload?: {
     days?: number;
     prizeId?: string;
@@ -156,6 +157,7 @@ type ReferralExchangeRequest = {
     details?: string;
   };
   createdAt?: string | null;
+  closedAt?: string | null;
 };
 
 type ReferralExchangeRequestsResponse = {
@@ -221,6 +223,8 @@ const EVENT_FILTERS = [
 ];
 
 const HISTORY_PAGE_SIZE = 20;
+const DEFAULT_EXCHANGE_APPROVE_COMMENT = "Обмен баллов пользователем";
+const DEFAULT_EXCHANGE_REJECT_COMMENT = "Отклонено оператором";
 
 const DAILY_REGISTRATIONS_CHART_CONFIG = {
   registrations: {
@@ -1255,6 +1259,9 @@ export default function AdminReferrals() {
       setExchangeActionId(requestId);
       setExchangeRequestsError("");
       try {
+        const typedComment = (exchangeComments[requestId] || "").trim();
+        const comment =
+          typedComment || (action === "approve" ? DEFAULT_EXCHANGE_APPROVE_COMMENT : DEFAULT_EXCHANGE_REJECT_COMMENT);
         const res = await fetch(`${apiBase}/admin/referrals/exchange-requests/${encodeURIComponent(requestId)}/${action}`, {
           method: "POST",
           headers: {
@@ -1262,7 +1269,7 @@ export default function AdminReferrals() {
             "X-Admin-Token": trimmedToken,
           },
           credentials: "include",
-          body: JSON.stringify({ operatorComment: (exchangeComments[requestId] || "").trim() }),
+          body: JSON.stringify({ comment }),
         });
         const body = await res.json().catch(() => null);
         if (!res.ok) {

@@ -20,7 +20,7 @@ const { redis } = await import("../redis.mjs");
 const { saveSession } = await import("../auth/session.mjs");
 const { base64url } = await import("../auth/crypto.mjs");
 const { SESSION_COOKIE, CSRF_COOKIE } = await import("../config.mjs");
-const { refEventsListKey } = await import("../auth/keys.mjs");
+const { refEventsListKey, refExchangeRequestKey } = await import("../auth/keys.mjs");
 const { recordReferralEvent } = await import("../referrals/events.mjs");
 const originalFetch = globalThis.fetch;
 
@@ -644,7 +644,7 @@ describe("referral admin summary", () => {
       assert.equal(options.method, "POST");
       assert.deepEqual(JSON.parse(options.body), {
         amount: 20,
-        comment: "Обмен реферальных баллов: 2 дн.; added manually",
+        comment: "added manually",
       });
       return new Response(
         JSON.stringify({
@@ -658,12 +658,25 @@ describe("referral admin summary", () => {
     const approveRes = await request(app)
       .post(`/api/admin/referrals/exchange-requests/${requestId}/approve`)
       .set("X-Admin-Token", "admin-test-token")
-      .send({ operatorComment: "added manually" });
+      .send({ comment: "added manually" });
 
     assert.equal(approveRes.status, 200);
     assert.equal(approveRes.body.request.status, "approved");
+    assert.equal(approveRes.body.request.operatorComment, "added manually");
     assert.equal(approveRes.body.debit.balance, 80);
     assert.equal(debitCalls, 1);
+
+    const visibleRes = await agent.get("/api/me/referrals/exchange-requests");
+    assert.equal(visibleRes.status, 200);
+    assert.equal(visibleRes.body.items.length, 1);
+    assert.equal(visibleRes.body.items[0].status, "approved");
+    assert.equal(visibleRes.body.items[0].operatorComment, "added manually");
+
+    const expiredAt = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
+    await redis.hset(refExchangeRequestKey(requestId), { closedAt: expiredAt });
+    const expiredVisibleRes = await agent.get("/api/me/referrals/exchange-requests");
+    assert.equal(expiredVisibleRes.status, 200);
+    assert.equal(expiredVisibleRes.body.items.length, 0);
 
     const repeatRes = await request(app)
       .post(`/api/admin/referrals/exchange-requests/${requestId}/approve`)
@@ -687,11 +700,16 @@ describe("referral admin summary", () => {
       .send({ type: "days", days: 2, points: 20 });
     const requestId = createRes.body.request.id;
 
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify({ error: "not enough points" }), {
+    globalThis.fetch = async (_url, options) => {
+      assert.deepEqual(JSON.parse(options.body), {
+        amount: 20,
+        comment: "Обмен баллов пользователем",
+      });
+      return new Response(JSON.stringify({ error: "not enough points" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
+    };
 
     const approveRes = await request(app)
       .post(`/api/admin/referrals/exchange-requests/${requestId}/approve`)
@@ -722,10 +740,17 @@ describe("referral admin summary", () => {
     const rejectRes = await request(app)
       .post(`/api/admin/referrals/exchange-requests/${requestId}/reject`)
       .set("X-Admin-Token", "admin-test-token")
-      .send({ operatorComment: "manual reject" });
+      .send({});
 
     assert.equal(rejectRes.status, 200);
     assert.equal(rejectRes.body.request.status, "rejected");
+    assert.equal(rejectRes.body.request.operatorComment, "Отклонено оператором");
+
+    const visibleRes = await agent.get("/api/me/referrals/exchange-requests");
+    assert.equal(visibleRes.status, 200);
+    assert.equal(visibleRes.body.items.length, 1);
+    assert.equal(visibleRes.body.items[0].status, "rejected");
+    assert.equal(visibleRes.body.items[0].operatorComment, "Отклонено оператором");
 
     const repeatRes = await request(app)
       .post(`/api/admin/referrals/exchange-requests/${requestId}/reject`)

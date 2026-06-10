@@ -3722,7 +3722,13 @@ body.landing-no-scroll { overflow: hidden; }
   font-size: 12px;
 }
 
-.landing-root .dash-referrals-requests__item > span {
+.landing-root .dash-referrals-requests__content {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.landing-root .dash-referrals-requests__main {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3735,8 +3741,19 @@ body.landing-no-scroll { overflow: hidden; }
 }
 
 .landing-root .dash-referrals-requests__item time,
-.landing-root .dash-referrals-requests__item span span {
+.landing-root .dash-referrals-requests__points,
+.landing-root .dash-referrals-requests__meta,
+.landing-root .dash-referrals-requests__comment {
   color: var(--muted);
+}
+
+.landing-root .dash-referrals-requests__points {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.landing-root .dash-referrals-requests__comment {
+  overflow-wrap: anywhere;
 }
 
 /* History section gets full width when sitting under the 3-col grid. */

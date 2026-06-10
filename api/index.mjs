@@ -96,6 +96,8 @@ const referralExchangeRequestSchema = z.discriminatedUnion("type", [
   }),
 ]);
 const REFERRAL_POINTS_PER_DAY = 10;
+const DEFAULT_EXCHANGE_APPROVE_COMMENT = "Обмен баллов пользователем";
+const DEFAULT_EXCHANGE_REJECT_COMMENT = "Отклонено оператором";
 const REFERRAL_PRIZES = new Map([
   ["airpods-3", { title: "Apple AirPods 3", points: 18000 }],
   ["phone-card-1000", { title: "1000 руб на баланс телефона или карту", points: 1000 }],
@@ -385,14 +387,15 @@ function extractRmwTransactionId(data) {
   return String(raw);
 }
 
-function formatExchangeRequestComment(request, operatorComment = "") {
-  const payload = request.payload || {};
-  const base =
-    request.type === "days"
-      ? `Обмен реферальных баллов: ${payload.days || "—"} дн.`
-      : `Обмен реферальных баллов: ${payload.prizeTitle || payload.prizeId || "приз"}`;
-  const suffix = operatorComment.trim() ? `; ${operatorComment.trim()}` : "";
-  return `${base}${suffix}`;
+function readExchangeRequestComment(body, fallback) {
+  const raw =
+    typeof body?.comment === "string"
+      ? body.comment
+      : typeof body?.operatorComment === "string"
+        ? body.operatorComment
+        : "";
+  const comment = raw.trim();
+  return comment || fallback;
 }
 
 async function getRmwBillingMeta({ allowCache = true } = {}) {
@@ -979,7 +982,7 @@ app.post("/api/admin/referrals/exchange-requests/:id/approve", requireAdminToken
   try {
     const id = String(req.params.id || "").trim();
     if (!id) return clientError(res, 400, "Некорректный ID заявки");
-    const operatorComment = typeof req.body?.operatorComment === "string" ? req.body.operatorComment.trim() : "";
+    const operatorComment = readExchangeRequestComment(req.body, DEFAULT_EXCHANGE_APPROVE_COMMENT);
 
     const result = await withReferralExchangeRequestLock(id, async () => {
       const request = await getReferralExchangeRequest(id);
@@ -996,7 +999,7 @@ app.post("/api/admin/referrals/exchange-requests/:id/approve", requireAdminToken
 
       const debitData = await debitRmwReferralPoints(request.referrerUuid, {
         amount: request.points,
-        comment: formatExchangeRequestComment(request, operatorComment),
+        comment: operatorComment,
         force: false,
       });
       const closed = await closeReferralExchangeRequest(id, {
@@ -1024,7 +1027,7 @@ app.post("/api/admin/referrals/exchange-requests/:id/reject", requireAdminToken,
   try {
     const id = String(req.params.id || "").trim();
     if (!id) return clientError(res, 400, "Некорректный ID заявки");
-    const operatorComment = typeof req.body?.operatorComment === "string" ? req.body.operatorComment.trim() : "";
+    const operatorComment = readExchangeRequestComment(req.body, DEFAULT_EXCHANGE_REJECT_COMMENT);
 
     const request = await withReferralExchangeRequestLock(id, async () => {
       const existing = await getReferralExchangeRequest(id);
@@ -1192,7 +1195,7 @@ app.get("/api/me/referrals/status", requireSession, async (req, res) => {
 app.get("/api/me/referrals/exchange-requests", requireSession, async (req, res) => {
   try {
     const userUuid = assertValidUuid(req.session.userUuid);
-    const items = await listReferralExchangeRequests({ status: "pending", referrerUuid: userUuid });
+    const items = await listReferralExchangeRequests({ status: "user_visible", referrerUuid: userUuid });
     return res.json({ items });
   } catch (err) {
     if (err?.message === "Invalid user UUID") {

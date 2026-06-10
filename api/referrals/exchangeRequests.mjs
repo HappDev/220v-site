@@ -9,6 +9,8 @@ import {
 
 const VALID_TYPES = new Set(["days", "prize"]);
 const VALID_STATUSES = new Set(["pending", "approved", "rejected"]);
+const LIST_STATUSES = new Set(["pending", "user_visible"]);
+const USER_VISIBLE_CLOSED_MS = 30 * 24 * 60 * 60 * 1000;
 
 function normalizeJson(raw, fallback) {
   if (!raw) return fallback;
@@ -93,7 +95,7 @@ export async function createReferralExchangeRequest({ referrerUuid, email, type,
 }
 
 export async function listReferralExchangeRequests({ status = "pending", referrerUuid = null } = {}) {
-  if (status !== "pending") {
+  if (!LIST_STATUSES.has(status) || (status === "user_visible" && !referrerUuid)) {
     const err = new Error("Unsupported exchange request status filter");
     err.status = 400;
     throw err;
@@ -103,7 +105,16 @@ export async function listReferralExchangeRequests({ status = "pending", referre
     ? await redis.zrevrange(refExchangeRequestsUserKey(referrerUuid), 0, 199)
     : await redis.zrevrange(refExchangeRequestsPendingKey(), 0, 499);
   const requests = await getRequestsByIds(ids);
-  return requests.filter((request) => request.status === "pending");
+  if (status === "pending") {
+    return requests.filter((request) => request.status === "pending");
+  }
+
+  const closedCutoffMs = Date.now() - USER_VISIBLE_CLOSED_MS;
+  return requests.filter((request) => {
+    if (request.status === "pending") return true;
+    const closedAtMs = new Date(request.closedAt || "").getTime();
+    return Number.isFinite(closedAtMs) && closedAtMs >= closedCutoffMs;
+  });
 }
 
 export async function getPendingReferralExchangePoints(referrerUuid) {
