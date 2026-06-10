@@ -64,8 +64,14 @@ function severityMax(current, next) {
   return RISK_ORDER[next] > RISK_ORDER[current] ? next : current;
 }
 
-function makeWarning(code, label, severity, evidence) {
-  return { code, label, severity, evidence };
+function makeWarning(code, label, severity, evidence, description) {
+  return {
+    code,
+    label,
+    severity,
+    evidence,
+    ...(description ? { description } : {}),
+  };
 }
 
 function maxRepeatedIdentity(identityMap) {
@@ -303,20 +309,34 @@ function scoreReferrer(group) {
 
   if (counts.checkouts === 0 && repeatedUa && repeatedUa.count >= 5) {
     addWarning(
-      makeWarning("repeated_user_agent_no_checkout", "Повтор User-Agent hash без checkout", "medium", {
-        uaHash: repeatedUa.key,
-        events: repeatedUa.count,
-      }),
+      makeWarning(
+        "repeated_user_agent_no_checkout",
+        "Много действий с одного браузера без оплат",
+        "medium",
+        {
+          uaHash: repeatedUa.key,
+          events: repeatedUa.count,
+          checkouts: counts.checkouts,
+        },
+        "Один и тот же User-Agent hash встретился в 5+ реферальных событиях, при этом у реферера нет ни одной оплаты.",
+      ),
       30,
     );
   }
 
   if (counts.checkouts === 0 && repeatedFingerprint && repeatedFingerprint.count >= 5) {
     addWarning(
-      makeWarning("repeated_fingerprint_no_checkout", "Повтор fingerprint hash без checkout", "medium", {
-        fingerprintHash: repeatedFingerprint.key,
-        events: repeatedFingerprint.count,
-      }),
+      makeWarning(
+        "repeated_fingerprint_no_checkout",
+        "Много действий с одного устройства без оплат",
+        "medium",
+        {
+          fingerprintHash: repeatedFingerprint.key,
+          events: repeatedFingerprint.count,
+          checkouts: counts.checkouts,
+        },
+        "Один и тот же fingerprint hash встретился в 5+ реферальных событиях, при этом у реферера нет ни одной оплаты.",
+      ),
       30,
     );
   }

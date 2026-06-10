@@ -58,6 +58,7 @@ type ReferralWarning = {
   label: string;
   severity: RiskLevel;
   evidence: Record<string, unknown>;
+  description?: string;
 };
 
 type ReferralUserStatus = {
@@ -636,8 +637,9 @@ function WarningList({ warnings }: { warnings: ReferralWarning[] }) {
                 className={cn("h-3.5 w-3.5 shrink-0 rounded-full border shadow-sm", riskDotClass(warning.severity))}
               />
             </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
+            <TooltipContent className="max-w-xs space-y-1">
               <p className="font-medium">{warning.label}</p>
+              {warning.description && <p className="text-xs leading-snug opacity-90">{warning.description}</p>}
               <p className="font-mono text-xs opacity-75">{warning.code}</p>
             </TooltipContent>
           </Tooltip>
@@ -964,7 +966,7 @@ function ReferrerTable({
                           <li>один IP-хэш часто при кодах/регистрациях: +55</li>
                           <li>один fingerprint-хэш часто при кодах/регистрациях: +55</li>
                           <li>≥2 пропущенных реферальных начисления: +35</li>
-                          <li>повтор User-Agent / fingerprint без оплат: +30</li>
+                          <li>5+ действий с одного браузера/устройства и 0 оплат: +30</li>
                         </ul>
                         <p className="opacity-75">Если сигналов нет, но события есть — базовый балл 5.</p>
                       </ColumnHeaderHint>
@@ -1102,6 +1104,9 @@ function ReferrerTable({
                                     <span className="font-semibold text-foreground">{warning.label}</span>
                                     <span className="font-mono text-xs text-muted-foreground">{warning.code}</span>
                                   </div>
+                                  {warning.description && (
+                                    <p className="mt-2 text-sm text-muted-foreground">{warning.description}</p>
+                                  )}
                                   <pre className="mt-2 overflow-auto rounded bg-muted p-2 text-xs text-muted-foreground">
                                     {JSON.stringify(warning.evidence, null, 2)}
                                   </pre>

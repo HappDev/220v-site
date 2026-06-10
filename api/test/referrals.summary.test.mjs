@@ -260,6 +260,64 @@ describe("referral admin summary", () => {
     );
   });
 
+  it("explains repeated User-Agent activity without checkout", async () => {
+    await seedEvents(
+      Array.from({ length: 5 }, (_, index) =>
+        event({
+          type: "ref_click",
+          referrerUuid: REF_A,
+          ipHash: `ip-ua-${index}`,
+          uaHash: "ua-repeat",
+          fingerprintHash: `fp-ua-${index}`,
+        }),
+      ),
+    );
+
+    const res = await getSummary("?days=all&limit=50");
+    assert.equal(res.status, 200);
+
+    const warning = res.body.referrers[0].warnings.find(
+      (item) => item.code === "repeated_user_agent_no_checkout",
+    );
+
+    assert.equal(res.body.referrers[0].riskLevel, "medium");
+    assert.equal(res.body.referrers[0].riskScore, 30);
+    assert.ok(warning);
+    assert.equal(warning.label, "Много действий с одного браузера без оплат");
+    assert.match(warning.description, /User-Agent hash/);
+    assert.equal(warning.evidence.events, 5);
+    assert.equal(warning.evidence.checkouts, 0);
+  });
+
+  it("explains repeated fingerprint activity without checkout", async () => {
+    await seedEvents(
+      Array.from({ length: 5 }, (_, index) =>
+        event({
+          type: "ref_click",
+          referrerUuid: REF_A,
+          ipHash: `ip-fp-${index}`,
+          uaHash: `ua-fp-${index}`,
+          fingerprintHash: "fp-repeat",
+        }),
+      ),
+    );
+
+    const res = await getSummary("?days=all&limit=50");
+    assert.equal(res.status, 200);
+
+    const warning = res.body.referrers[0].warnings.find(
+      (item) => item.code === "repeated_fingerprint_no_checkout",
+    );
+
+    assert.equal(res.body.referrers[0].riskLevel, "medium");
+    assert.equal(res.body.referrers[0].riskScore, 30);
+    assert.ok(warning);
+    assert.equal(warning.label, "Много действий с одного устройства без оплат");
+    assert.match(warning.description, /fingerprint hash/);
+    assert.equal(warning.evidence.events, 5);
+    assert.equal(warning.evidence.checkouts, 0);
+  });
+
   it("does not flag low click or code conversion as risk", async () => {
     await seedEvents([
       ...Array.from({ length: 20 }, (_, index) =>
