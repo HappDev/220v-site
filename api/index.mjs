@@ -376,6 +376,50 @@ async function debitRmwReferralPoints(userUuid, { amount, comment, force = false
   return data;
 }
 
+async function exchangeRmwReferralPointsForDays(userUuid, { points, days, force = false }) {
+  const uuid = assertValidUuid(userUuid);
+  const rmwUrl = rmwBaseUrl();
+  const rmwKey = rmwApiKey();
+  if (!rmwUrl || !rmwKey) {
+    const err = new Error("RMW not configured");
+    err.status = 500;
+    throw err;
+  }
+
+  const r = await fetchWithTimeout(
+    `${rmwUrl}/v1/users/${encodeURIComponent(uuid)}/referral-points/exchange-days`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": rmwKey,
+      },
+      body: JSON.stringify({ points, days, force }),
+    },
+  );
+
+  const text = await r.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    const err = new Error("Invalid JSON from RMW referral-points exchange-days");
+    err.status = 502;
+    throw err;
+  }
+
+  if (!r.ok) {
+    const err = new Error("RMW referral-points exchange-days failed");
+    err.status = r.status >= 400 && r.status < 600 ? r.status : 502;
+    if (data && typeof data === "object" && typeof data.error === "string") {
+      err.publicMessage = data.error;
+    }
+    throw err;
+  }
+
+  return data;
+}
+
 function extractRmwTransactionId(data) {
   const raw =
     data?.transaction?.id ??
@@ -997,17 +1041,37 @@ app.post("/api/admin/referrals/exchange-requests/:id/approve", requireAdminToken
         throw err;
       }
 
-      const debitData = await debitRmwReferralPoints(request.referrerUuid, {
-        amount: request.points,
-        comment: operatorComment,
-        force: false,
-      });
+      let rmwData;
+      let responseField;
+      if (request.type === "days") {
+        const days = Number(request.payload?.days);
+        if (!Number.isInteger(days) || days <= 0) {
+          const err = new Error("Invalid exchange request days");
+          err.status = 400;
+          err.publicMessage = "Некорректное количество дней в заявке";
+          throw err;
+        }
+        rmwData = await exchangeRmwReferralPointsForDays(request.referrerUuid, {
+          points: request.points,
+          days,
+          force: false,
+        });
+        responseField = "exchange";
+      } else {
+        rmwData = await debitRmwReferralPoints(request.referrerUuid, {
+          amount: request.points,
+          comment: operatorComment,
+          force: false,
+        });
+        responseField = "debit";
+      }
+
       const closed = await closeReferralExchangeRequest(id, {
         status: "approved",
         operatorComment,
-        rmwTransactionId: extractRmwTransactionId(debitData),
+        rmwTransactionId: extractRmwTransactionId(rmwData),
       });
-      return { request: closed, debit: debitData };
+      return { request: closed, [responseField]: rmwData };
     });
 
     return res.json(result);

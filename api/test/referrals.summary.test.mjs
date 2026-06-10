@@ -629,7 +629,7 @@ describe("referral admin summary", () => {
     assert.equal(res.body.items[0].status, "pending");
   });
 
-  it("approves exchange requests through RMW debit and prevents repeated approval", async () => {
+  it("approves day exchange requests through RMW exchange-days and prevents repeated approval", async () => {
     mockReferralPointsFetch({ balance: 100 });
     const agent = await createSessionAgent(REF_A);
     const createRes = await agent
@@ -637,19 +637,20 @@ describe("referral admin summary", () => {
       .send({ type: "days", days: 2, points: 20 });
     const requestId = createRes.body.request.id;
 
-    let debitCalls = 0;
+    let exchangeCalls = 0;
     globalThis.fetch = async (url, options) => {
-      debitCalls += 1;
-      assert.equal(url, `${process.env.RMW_API_URL}/v1/users/${REF_A}/referral-points/debit`);
+      exchangeCalls += 1;
+      assert.equal(url, `${process.env.RMW_API_URL}/v1/users/${REF_A}/referral-points/exchange-days`);
       assert.equal(options.method, "POST");
       assert.deepEqual(JSON.parse(options.body), {
-        amount: 20,
-        comment: "added manually",
+        points: 20,
+        days: 2,
+        force: false,
       });
       return new Response(
         JSON.stringify({
           balance: 80,
-          transaction: { id: 55, amount: -20, reason: "manual_debit", created_at: "2026-01-03T00:00:00Z" },
+          transaction: { id: 55, amount: -20, reason: "referral_exchange_days", created_at: "2026-01-03T00:00:00Z" },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
@@ -663,8 +664,8 @@ describe("referral admin summary", () => {
     assert.equal(approveRes.status, 200);
     assert.equal(approveRes.body.request.status, "approved");
     assert.equal(approveRes.body.request.operatorComment, "added manually");
-    assert.equal(approveRes.body.debit.balance, 80);
-    assert.equal(debitCalls, 1);
+    assert.equal(approveRes.body.exchange.balance, 80);
+    assert.equal(exchangeCalls, 1);
 
     const visibleRes = await agent.get("/api/me/referrals/exchange-requests");
     assert.equal(visibleRes.status, 200);
@@ -676,7 +677,7 @@ describe("referral admin summary", () => {
       .send({});
 
     assert.equal(repeatRes.status, 409);
-    assert.equal(debitCalls, 1);
+    assert.equal(exchangeCalls, 1);
 
     const pendingRes = await request(app)
       .get("/api/admin/referrals/exchange-requests?status=pending")
@@ -684,7 +685,7 @@ describe("referral admin summary", () => {
     assert.equal(pendingRes.body.items.length, 0);
   });
 
-  it("keeps exchange request pending when RMW debit fails", async () => {
+  it("keeps day exchange request pending when RMW exchange-days fails", async () => {
     mockReferralPointsFetch({ balance: 100 });
     const agent = await createSessionAgent(REF_A);
     const createRes = await agent
@@ -694,8 +695,9 @@ describe("referral admin summary", () => {
 
     globalThis.fetch = async (_url, options) => {
       assert.deepEqual(JSON.parse(options.body), {
-        amount: 20,
-        comment: "Обмен баллов пользователем",
+        points: 20,
+        days: 2,
+        force: false,
       });
       return new Response(JSON.stringify({ error: "not enough points" }), {
         status: 400,

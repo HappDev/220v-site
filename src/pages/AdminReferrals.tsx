@@ -169,6 +169,9 @@ type ReferralExchangeActionResponse = {
   debit?: {
     balance?: number;
   };
+  exchange?: {
+    balance?: number;
+  };
 };
 
 type ReferralSummary = {
@@ -1281,7 +1284,7 @@ export default function AdminReferrals() {
         }
         const data = body as ReferralExchangeActionResponse;
         if (action === "approve") {
-          toast.success(`Заявка одобрена. Баланс: ${data.debit?.balance ?? "—"}`);
+          toast.success(`Заявка одобрена. Баланс: ${data.exchange?.balance ?? data.debit?.balance ?? "—"}`);
         } else {
           toast.success("Заявка отклонена");
         }
