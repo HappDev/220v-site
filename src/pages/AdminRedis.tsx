@@ -316,7 +316,10 @@ export default function AdminRedis() {
       icon={Database}
       token={token}
       onTokenChange={setToken}
-      onReset={() => setSnapshot(null)}
+      onReset={() => {
+        setSnapshot(null);
+        setError("");
+      }}
       onRefresh={load}
       loading={loading}
       error={error}

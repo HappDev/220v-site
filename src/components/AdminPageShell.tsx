@@ -1,9 +1,10 @@
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Database, GitBranch, Loader2, RefreshCw, ShieldAlert } from "lucide-react";
+import { Database, GitBranch, KeyRound, Loader2, LogOut, ShieldAlert, UserRoundCog } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ADMIN_TOKEN_STORAGE_KEY } from "@/lib/admin";
 import { cn } from "@/lib/utils";
 
@@ -56,28 +57,67 @@ export default function AdminPageShell({
     onReset();
   };
 
+  const handleAuthorize = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onRefresh();
+  };
+
   return (
     <div className="min-h-[100svh] min-h-[100dvh] bg-background p-4 text-foreground sm:p-6">
       <div className="mx-auto flex max-w-7xl flex-col gap-5">
-        <nav className="flex flex-wrap gap-2 rounded-2xl bg-card p-2 shadow-sm ring-1 ring-border">
-          {ADMIN_LINKS.map(({ href, label, Icon: LinkIcon }) => {
-            const active = location.pathname === href;
-            return (
-              <Link
-                key={href}
-                to={href}
-                className={cn(
-                  "inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors",
-                  active
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                <LinkIcon className="h-4 w-4" />
-                {label}
-              </Link>
-            );
-          })}
+        <nav className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-card p-2 shadow-sm ring-1 ring-border">
+          <div className="flex flex-wrap gap-2">
+            {ADMIN_LINKS.map(({ href, label, Icon: LinkIcon }) => {
+              const active = location.pathname === href;
+              return (
+                <Link
+                  key={href}
+                  to={href}
+                  className={cn(
+                    "inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors",
+                    active
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  <LinkIcon className="h-4 w-4" />
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <UserRoundCog className="h-4 w-4" />
+                Доступ
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 p-3">
+              <p className="mb-3 text-sm font-semibold">Админ-доступ</p>
+              <form className="space-y-3" onSubmit={handleAuthorize}>
+                <input
+                  type="password"
+                  value={token}
+                  onChange={(event) => onTokenChange(event.target.value)}
+                  placeholder="ADMIN_REDIS_TOKEN"
+                  autoComplete="current-password"
+                  enterKeyHint="go"
+                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-base outline-none focus:ring-2 focus:ring-ring md:text-sm"
+                />
+                <Button type="submit" disabled={loading} className="w-full gap-2">
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                  Авторизоваться
+                </Button>
+              </form>
+              <div className="my-3 h-px bg-muted" />
+              <Button type="button" variant="outline" onClick={handleReset} className="w-full gap-2">
+                <LogOut className="h-4 w-4" />
+                Выход
+              </Button>
+            </PopoverContent>
+          </Popover>
         </nav>
 
         <header className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-border">
@@ -90,24 +130,6 @@ export default function AdminPageShell({
               <h1 className="text-2xl font-extrabold md:text-3xl">{title}</h1>
               <p className="mt-2 text-sm text-muted-foreground">{description}</p>
             </div>
-            <Button onClick={onRefresh} disabled={loading} className="gap-2">
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              Обновить
-            </Button>
-          </div>
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-            <input
-              type="password"
-              value={token}
-              onChange={(event) => onTokenChange(event.target.value)}
-              placeholder="ADMIN_REDIS_TOKEN"
-              autoComplete="current-password"
-              enterKeyHint="go"
-              className="h-10 flex-1 rounded-lg border border-border bg-background px-3 text-base outline-none focus:ring-2 focus:ring-ring md:text-sm"
-            />
-            <Button variant="outline" onClick={handleReset}>
-              Сбросить токен
-            </Button>
           </div>
           {error && (
             <div className="mt-4 flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">

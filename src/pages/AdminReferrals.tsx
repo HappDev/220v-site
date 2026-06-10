@@ -1340,7 +1340,14 @@ export default function AdminReferrals() {
       icon={GitBranch}
       token={token}
       onTokenChange={setToken}
-      onReset={() => setSummary(null)}
+      onReset={() => {
+        setSummary(null);
+        setExchangeRequests([]);
+        setExchangeRequestsError("");
+        setExchangeActionId("");
+        setExchangeComments({});
+        setError("");
+      }}
       onRefresh={load}
       loading={loading}
       error={error}
