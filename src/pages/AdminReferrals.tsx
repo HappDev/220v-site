@@ -119,6 +119,7 @@ type ReferralPointItem = {
     is_first?: boolean;
     trigger?: string;
     comment?: string;
+    days?: number;
   } | null;
   created_at: string;
 };
@@ -270,6 +271,14 @@ function formatReferralPointReason(item: ReferralPointItem): string {
     const comment = item.meta?.comment?.trim();
     return comment ? `Списание баллов: ${comment}` : "Списание баллов";
   }
+  if (item.reason === "referral_exchange_days") {
+    const comment = item.meta?.comment?.trim();
+    if (comment) return comment;
+    const days = Number(item.meta?.days);
+    return Number.isInteger(days) && days > 0 ? `Обмен баллов на дни: ${days}` : "Обмен баллов на дни";
+  }
+  const comment = item.meta?.comment?.trim();
+  if (comment) return comment;
   return item.reason || "—";
 }
 

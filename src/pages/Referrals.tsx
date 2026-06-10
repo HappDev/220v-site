@@ -22,6 +22,7 @@ type ReferralPointItem = {
     tariff_key?: string;
     is_first?: boolean;
     trigger?: string;
+    days?: number;
   } | null;
   created_at: string;
 };
@@ -153,6 +154,10 @@ function formatReason(item: ReferralPointItem): string {
     const suffix = tierLabel ? ` (${tierLabel})` : "";
     const first = item.meta?.is_first ? " — первая оплата" : "";
     return `Оплата тарифа реферала${suffix}${first}`;
+  }
+  if (item.reason === "referral_exchange_days") {
+    const days = Number(item.meta?.days);
+    return Number.isInteger(days) && days > 0 ? `Обмен баллов на дни: ${days}` : "Обмен баллов на дни";
   }
   return item.reason || "—";
 }
