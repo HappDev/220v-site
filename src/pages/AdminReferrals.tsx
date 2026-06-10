@@ -241,6 +241,35 @@ const DAILY_REGISTRATIONS_CHART_CONFIG = {
   },
 } satisfies ChartConfig;
 
+const RISK_TOTAL_HINTS = {
+  events: {
+    label: "События",
+    description:
+      "Все реферальные события за выбранный период: переходы по ссылке, отправки кодов, регистрации, checkout, пропуски начислений и self-referral события.",
+  },
+  referrers: {
+    label: "Рефереры",
+    description: "Количество уникальных UUID рефереров, у которых есть реферальные события в выбранном периоде.",
+  },
+  suspiciousReferrers: {
+    label: "Подозрительные",
+    description: "Рефереры с итоговым уровнем риска medium, high или critical.",
+  },
+  criticalHighWarnings: {
+    label: "Critical/High",
+    description: "Общее число warning-ов с severity critical или high среди всех рефереров в выборке.",
+  },
+  selfReferrals: {
+    label: "Self-referrals",
+    description: "События, где пользователь попытался пройти по собственной реферальной цепочке.",
+  },
+  multiAccountDetections: {
+    label: "Multi-account",
+    description:
+      "Сколько раз найден сценарий, где ссылка открывалась из браузера/ПК другого аккаунта, а затем был зарегистрирован реферал с совпадающим браузерным сигналом.",
+  },
+} satisfies Record<keyof ReferralSummary["totals"], { label: string; description: string }>;
+
 function formatDate(value?: string | null) {
   if (!value) return "—";
   const date = new Date(value);
@@ -376,11 +405,27 @@ async function copyToClipboard(value: string, label: string) {
   }
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
+function StatCard({ label, value, description }: { label: string; value: number; description?: string }) {
   return (
-    <div className="rounded-xl bg-card p-4 ring-1 ring-border">
-      <p className="text-xs uppercase text-muted-foreground">{label}</p>
-      <p className="mt-2 text-2xl font-bold text-foreground">{value}</p>
+    <div className="rounded-lg bg-muted px-3 py-2">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs uppercase text-muted-foreground">{label}</p>
+        {description ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-background hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                aria-label={`Описание: ${label}`}
+              >
+                <Info className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-left text-xs leading-snug">{description}</TooltipContent>
+          </Tooltip>
+        ) : null}
+      </div>
+      <p className="mt-1 text-xl font-bold text-foreground">{value}</p>
     </div>
   );
 }
@@ -1578,39 +1623,45 @@ export default function AdminReferrals() {
 
       {summary && (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-            <StatCard label="События" value={summary.totals.events} />
-            <StatCard label="Рефереры" value={summary.totals.referrers} />
-            <StatCard label="Подозрительные" value={summary.totals.suspiciousReferrers} />
-            <StatCard label="Critical/High" value={summary.totals.criticalHighWarnings} />
-            <StatCard label="Self-referrals" value={summary.totals.selfReferrals} />
-            <StatCard label="Multi-account" value={summary.totals.multiAccountDetections} />
-          </div>
-
           <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <h2 className="mr-auto text-lg font-bold text-foreground">Воронка и риск</h2>
-              {(Object.keys(RISK_LABELS) as RiskLevel[]).map((level) => (
-                <Badge key={level} className={cn("border", riskClass(level))}>
-                  {RISK_LABELS[level]}: {summary.riskSummary[level] || 0}
-                </Badge>
-              ))}
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              {[
-                ["Clicks", summary.funnel.clicks],
-                ["Codes", summary.funnel.codes],
-                ["Verifies", summary.funnel.verifies],
-                ["Checkouts", summary.funnel.checkouts],
-                ["Skipped", summary.funnel.creditSkipped],
-                ["Self", summary.funnel.selfReferrals],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-lg bg-muted px-3 py-2">
-                  <p className="text-xs uppercase text-muted-foreground">{label}</p>
-                  <p className="mt-1 text-xl font-bold text-foreground">{value}</p>
-                </div>
-              ))}
-            </div>
+            <TooltipProvider delayDuration={150}>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <h2 className="mr-auto text-lg font-bold text-foreground">Воронка и риск</h2>
+                {(Object.keys(RISK_LABELS) as RiskLevel[]).map((level) => (
+                  <Badge key={level} className={cn("border", riskClass(level))}>
+                    {RISK_LABELS[level]}: {summary.riskSummary[level] || 0}
+                  </Badge>
+                ))}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+                {(Object.keys(RISK_TOTAL_HINTS) as Array<keyof ReferralSummary["totals"]>).map((key) => {
+                  const item = RISK_TOTAL_HINTS[key];
+                  return (
+                    <StatCard
+                      key={key}
+                      label={item.label}
+                      value={summary.totals[key]}
+                      description={item.description}
+                    />
+                  );
+                })}
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                {[
+                  ["Clicks", summary.funnel.clicks],
+                  ["Codes", summary.funnel.codes],
+                  ["Verifies", summary.funnel.verifies],
+                  ["Checkouts", summary.funnel.checkouts],
+                  ["Skipped", summary.funnel.creditSkipped],
+                  ["Self", summary.funnel.selfReferrals],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-lg bg-muted px-3 py-2">
+                    <p className="text-xs uppercase text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-xl font-bold text-foreground">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </TooltipProvider>
           </section>
 
           <DailyRegistrationsChart data={summary.dailyRegistrations || []} />
