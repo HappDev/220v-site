@@ -1,5 +1,5 @@
 import { type FormEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronRight, GitBranch, Info } from "lucide-react";
+import { AlertTriangle, ChevronRight, GitBranch, Info, SlidersHorizontal } from "lucide-react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 
@@ -575,9 +575,20 @@ function WarningList({ warnings }: { warnings: ReferralWarning[] }) {
   );
 }
 
-function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eventType: string; token: string }) {
+function ReferrerTable({
+  items,
+  eventType,
+  token,
+  filtersPanel,
+}: {
+  items: ReferrerRisk[];
+  eventType: string;
+  token: string;
+  filtersPanel: ReactNode;
+}) {
   const [userLookups, setUserLookups] = useState<Record<string, ReferrerUserLookup>>({});
   const [balanceLookups, setBalanceLookups] = useState<Record<string, ReferrerBalanceLookup>>({});
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyUuid, setHistoryUuid] = useState("");
   const [historyData, setHistoryData] = useState<ReferralPointsResponse | null>(null);
@@ -591,6 +602,28 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
   const [debitLoading, setDebitLoading] = useState(false);
   const [debitError, setDebitError] = useState("");
   const [statusOverrides, setStatusOverrides] = useState<Record<string, ReferralUserStatus>>({});
+  const filtersRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!filtersOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (filtersRef.current && !filtersRef.current.contains(event.target as Node)) {
+        setFiltersOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFiltersOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [filtersOpen]);
 
   const loadUserEmail = useCallback(
     async (uuid: string) => {
@@ -802,9 +835,39 @@ function ReferrerTable({ items, eventType, token }: { items: ReferrerRisk[]; eve
   return (
     <>
       <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
-        <div className="mb-3 flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-bold text-foreground">Рефереры с риском</h2>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="mr-auto flex min-w-0 items-center gap-2">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-primary" />
+            <h2 className="text-lg font-bold text-foreground">Рефереры с риском</h2>
+          </div>
+          <div ref={filtersRef} className="relative">
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-expanded={filtersOpen}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground transition hover:bg-muted"
+                    onClick={() => setFiltersOpen((open) => !open)}
+                  >
+                    <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                    Фильтры
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Период, limit и уровень риска</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            {filtersOpen ? (
+              <div
+                role="dialog"
+                aria-label="Фильтры рефереров с риском"
+                className="absolute right-0 z-30 mt-2 w-[min(92vw,520px)] rounded-xl border border-border bg-card p-4 shadow-xl"
+              >
+                <div className="grid gap-3 sm:grid-cols-3">{filtersPanel}</div>
+              </div>
+            ) : null}
+          </div>
         </div>
         {items.length === 0 ? (
           <p className="text-sm text-muted-foreground">По выбранным фильтрам ничего не найдено</p>
@@ -1332,6 +1395,49 @@ export default function AdminReferrals() {
     return summary.events.filter((event) => event.type === eventType);
   }, [eventType, summary]);
 
+  const riskFiltersPanel = (
+    <>
+      <label className="text-sm font-semibold text-foreground">
+        Период
+        <select
+          value={period}
+          onChange={(event) => setPeriod(event.target.value as "7" | "30" | "all")}
+          className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="7">7 дней</option>
+          <option value="30">30 дней</option>
+          <option value="all">Весь Redis TTL</option>
+        </select>
+      </label>
+      <label className="text-sm font-semibold text-foreground">
+        Limit
+        <input
+          type="number"
+          min="1"
+          max="20000"
+          value={limit}
+          onChange={(event) => setLimit(event.target.value)}
+          className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+        />
+      </label>
+      <label className="text-sm font-semibold text-foreground">
+        Риск
+        <select
+          value={riskFilter}
+          onChange={(event) => setRiskFilter(event.target.value as RiskLevel | "all")}
+          className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="all">Все уровни</option>
+          <option value="critical">Критичный</option>
+          <option value="high">Высокий</option>
+          <option value="medium">Средний</option>
+          <option value="low">Низкий</option>
+          <option value="none">Нет</option>
+        </select>
+      </label>
+    </>
+  );
+
   return (
     <AdminPageShell
       eyebrow="Referral Risk Monitor"
@@ -1354,45 +1460,7 @@ export default function AdminReferrals() {
       updatedAt={summary?.generatedAt}
     >
       <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
-        <div className="grid gap-3 md:grid-cols-[160px_140px_160px_1fr_180px]">
-          <label className="text-sm font-semibold text-foreground">
-            Период
-            <select
-              value={period}
-              onChange={(event) => setPeriod(event.target.value as "7" | "30" | "all")}
-              className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="7">7 дней</option>
-              <option value="30">30 дней</option>
-              <option value="all">Весь Redis TTL</option>
-            </select>
-          </label>
-          <label className="text-sm font-semibold text-foreground">
-            Limit
-            <input
-              type="number"
-              min="1"
-              max="20000"
-              value={limit}
-              onChange={(event) => setLimit(event.target.value)}
-              className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-            />
-          </label>
-          <label className="text-sm font-semibold text-foreground">
-            Риск
-            <select
-              value={riskFilter}
-              onChange={(event) => setRiskFilter(event.target.value as RiskLevel | "all")}
-              className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="all">Все уровни</option>
-              <option value="critical">Критичный</option>
-              <option value="high">Высокий</option>
-              <option value="medium">Средний</option>
-              <option value="low">Низкий</option>
-              <option value="none">Нет</option>
-            </select>
-          </label>
+        <div className="grid gap-3 md:grid-cols-[1fr_180px]">
           <label className="text-sm font-semibold text-foreground">
             Referrer UUID
             <input
@@ -1550,7 +1618,7 @@ export default function AdminReferrals() {
 
           <DailyRegistrationsChart data={summary.dailyRegistrations || []} />
 
-          <ReferrerTable items={filteredReferrers} eventType={eventType} token={token} />
+          <ReferrerTable items={filteredReferrers} eventType={eventType} token={token} filtersPanel={riskFiltersPanel} />
 
           <div className="grid gap-5 lg:grid-cols-3">
             <CounterList title="Top IP hashes" items={summary.topIps} />
