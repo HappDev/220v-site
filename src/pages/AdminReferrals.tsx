@@ -270,6 +270,33 @@ const RISK_TOTAL_HINTS = {
   },
 } satisfies Record<keyof ReferralSummary["totals"], { label: string; description: string }>;
 
+const RISK_FUNNEL_HINTS = {
+  clicks: {
+    label: "Clicks",
+    description: "Переходы по реферальным ссылкам за выбранный период.",
+  },
+  codes: {
+    label: "Codes",
+    description: "Отправки или вводы реферального кода в процессе регистрации.",
+  },
+  verifies: {
+    label: "Verifies",
+    description: "Успешные подтверждения регистрации, привязанные к реферальной цепочке.",
+  },
+  checkouts: {
+    label: "Checkouts",
+    description: "Оплаты или checkout-события пользователей, пришедших по реферальной цепочке.",
+  },
+  creditSkipped: {
+    label: "Skipped",
+    description: "События, где реферальное начисление было пропущено backend-логикой.",
+  },
+  selfReferrals: {
+    label: "Self",
+    description: "Self-referral события внутри воронки: попытки пройти по собственной реферальной цепочке.",
+  },
+} satisfies Record<keyof ReferralCounts, { label: string; description: string }>;
+
 function formatDate(value?: string | null) {
   if (!value) return "—";
   const date = new Date(value);
@@ -1647,19 +1674,17 @@ export default function AdminReferrals() {
                 })}
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                {[
-                  ["Clicks", summary.funnel.clicks],
-                  ["Codes", summary.funnel.codes],
-                  ["Verifies", summary.funnel.verifies],
-                  ["Checkouts", summary.funnel.checkouts],
-                  ["Skipped", summary.funnel.creditSkipped],
-                  ["Self", summary.funnel.selfReferrals],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-lg bg-muted px-3 py-2">
-                    <p className="text-xs uppercase text-muted-foreground">{label}</p>
-                    <p className="mt-1 text-xl font-bold text-foreground">{value}</p>
-                  </div>
-                ))}
+                {(Object.keys(RISK_FUNNEL_HINTS) as Array<keyof ReferralCounts>).map((key) => {
+                  const item = RISK_FUNNEL_HINTS[key];
+                  return (
+                    <StatCard
+                      key={key}
+                      label={item.label}
+                      value={summary.funnel[key]}
+                      description={item.description}
+                    />
+                  );
+                })}
               </div>
             </TooltipProvider>
           </section>
