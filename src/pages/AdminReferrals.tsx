@@ -855,16 +855,18 @@ function ReferrerTable({
                     Фильтры
                   </button>
                 </TooltipTrigger>
-                <TooltipContent>Период, limit и уровень риска</TooltipContent>
+                <TooltipContent>Период, limit, риск, UUID и тип события</TooltipContent>
               </Tooltip>
             </TooltipProvider>
             {filtersOpen ? (
               <div
                 role="dialog"
                 aria-label="Фильтры рефереров с риском"
-                className="absolute right-0 z-30 mt-2 w-[min(92vw,520px)] rounded-xl border border-border bg-card p-4 shadow-xl"
+                className="absolute right-0 z-30 mt-2 w-[min(92vw,760px)] rounded-xl border border-border bg-card p-4 shadow-xl"
               >
-                <div className="grid gap-3 sm:grid-cols-3">{filtersPanel}</div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[150px_130px_150px_minmax(220px,1fr)_170px]">
+                  {filtersPanel}
+                </div>
               </div>
             ) : null}
           </div>
@@ -1395,7 +1397,7 @@ export default function AdminReferrals() {
     return summary.events.filter((event) => event.type === eventType);
   }, [eventType, summary]);
 
-  const riskFiltersPanel = (
+  const referrerFiltersPanel = (
     <>
       <label className="text-sm font-semibold text-foreground">
         Период
@@ -1435,6 +1437,29 @@ export default function AdminReferrals() {
           <option value="none">Нет</option>
         </select>
       </label>
+      <label className="text-sm font-semibold text-foreground">
+        Referrer UUID
+        <input
+          value={referrerFilter}
+          onChange={(event) => setReferrerFilter(event.target.value)}
+          placeholder="Фильтр по UUID"
+          className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+        />
+      </label>
+      <label className="text-sm font-semibold text-foreground">
+        Тип события
+        <select
+          value={eventType}
+          onChange={(event) => setEventType(event.target.value)}
+          className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+        >
+          {EVENT_FILTERS.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </label>
     </>
   );
 
@@ -1459,34 +1484,6 @@ export default function AdminReferrals() {
       error={error}
       updatedAt={summary?.generatedAt}
     >
-      <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
-        <div className="grid gap-3 md:grid-cols-[1fr_180px]">
-          <label className="text-sm font-semibold text-foreground">
-            Referrer UUID
-            <input
-              value={referrerFilter}
-              onChange={(event) => setReferrerFilter(event.target.value)}
-              placeholder="Фильтр по UUID"
-              className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-            />
-          </label>
-          <label className="text-sm font-semibold text-foreground">
-            Тип события
-            <select
-              value={eventType}
-              onChange={(event) => setEventType(event.target.value)}
-              className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-            >
-              {EVENT_FILTERS.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </section>
-
       <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
         <div className="mb-3 flex flex-wrap items-center gap-3">
           <div className="mr-auto">
@@ -1618,7 +1615,7 @@ export default function AdminReferrals() {
 
           <DailyRegistrationsChart data={summary.dailyRegistrations || []} />
 
-          <ReferrerTable items={filteredReferrers} eventType={eventType} token={token} filtersPanel={riskFiltersPanel} />
+          <ReferrerTable items={filteredReferrers} eventType={eventType} token={token} filtersPanel={referrerFiltersPanel} />
 
           <div className="grid gap-5 lg:grid-cols-3">
             <CounterList title="Top IP hashes" items={summary.topIps} />
