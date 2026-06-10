@@ -112,6 +112,7 @@ export async function listReferralExchangeRequests({ status = "pending", referre
   const closedCutoffMs = Date.now() - USER_VISIBLE_CLOSED_MS;
   return requests.filter((request) => {
     if (request.status === "pending") return true;
+    if (request.status !== "rejected") return false;
     const closedAtMs = new Date(request.closedAt || "").getTime();
     return Number.isFinite(closedAtMs) && closedAtMs >= closedCutoffMs;
   });

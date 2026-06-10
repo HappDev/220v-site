@@ -17,6 +17,7 @@ type ReferralPointItem = {
   reason: string;
   referred_user_email?: string | null;
   meta?: {
+    comment?: string;
     tier?: string;
     tariff_key?: string;
     is_first?: boolean;
@@ -133,6 +134,9 @@ function formatDateTime(iso: string): string {
 }
 
 function formatReason(item: ReferralPointItem): string {
+  const comment = item.meta?.comment?.trim();
+  if (comment) return comment;
+
   if (item.reason === "registration") {
     return "Регистрация реферала";
   }
@@ -710,7 +714,7 @@ const Referrals = () => {
                     <header className="dash-card__head">
                       <div className="dash-card__head-text">
                         <div className="dash-card__title">Активные заявки</div>
-                        <div className="dash-card__desc">Активные и обработанные за 30 дней</div>
+                        <div className="dash-card__desc">Активные и отклонённые за 30 дней</div>
                       </div>
                     </header>
                     <div className="dash-card__body">

@@ -668,15 +668,7 @@ describe("referral admin summary", () => {
 
     const visibleRes = await agent.get("/api/me/referrals/exchange-requests");
     assert.equal(visibleRes.status, 200);
-    assert.equal(visibleRes.body.items.length, 1);
-    assert.equal(visibleRes.body.items[0].status, "approved");
-    assert.equal(visibleRes.body.items[0].operatorComment, "added manually");
-
-    const expiredAt = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
-    await redis.hset(refExchangeRequestKey(requestId), { closedAt: expiredAt });
-    const expiredVisibleRes = await agent.get("/api/me/referrals/exchange-requests");
-    assert.equal(expiredVisibleRes.status, 200);
-    assert.equal(expiredVisibleRes.body.items.length, 0);
+    assert.equal(visibleRes.body.items.length, 0);
 
     const repeatRes = await request(app)
       .post(`/api/admin/referrals/exchange-requests/${requestId}/approve`)
@@ -751,6 +743,12 @@ describe("referral admin summary", () => {
     assert.equal(visibleRes.body.items.length, 1);
     assert.equal(visibleRes.body.items[0].status, "rejected");
     assert.equal(visibleRes.body.items[0].operatorComment, "Отклонено оператором");
+
+    const expiredAt = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
+    await redis.hset(refExchangeRequestKey(requestId), { closedAt: expiredAt });
+    const expiredVisibleRes = await agent.get("/api/me/referrals/exchange-requests");
+    assert.equal(expiredVisibleRes.status, 200);
+    assert.equal(expiredVisibleRes.body.items.length, 0);
 
     const repeatRes = await request(app)
       .post(`/api/admin/referrals/exchange-requests/${requestId}/reject`)
