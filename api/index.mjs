@@ -376,50 +376,6 @@ async function debitRmwReferralPoints(userUuid, { amount, comment, force = false
   return data;
 }
 
-async function creditRmwReferralPoints(userUuid, { amount, comment }) {
-  const uuid = assertValidUuid(userUuid);
-  const rmwUrl = rmwBaseUrl();
-  const rmwKey = rmwApiKey();
-  if (!rmwUrl || !rmwKey) {
-    const err = new Error("RMW not configured");
-    err.status = 500;
-    throw err;
-  }
-
-  const r = await fetchWithTimeout(
-    `${rmwUrl}/v1/users/${encodeURIComponent(uuid)}/referral-points/credit`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Api-Key": rmwKey,
-      },
-      body: JSON.stringify({ amount, comment }),
-    },
-  );
-
-  const text = await r.text();
-  let data;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    const err = new Error("Invalid JSON from RMW referral-points credit");
-    err.status = 502;
-    throw err;
-  }
-
-  if (!r.ok) {
-    const err = new Error("RMW referral-points credit failed");
-    err.status = r.status >= 400 && r.status < 600 ? r.status : 502;
-    if (data && typeof data === "object" && typeof data.error === "string") {
-      err.publicMessage = data.error;
-    }
-    throw err;
-  }
-
-  return data;
-}
-
 function extractRmwTransactionId(data) {
   const raw =
     data?.transaction?.id ??
@@ -1162,30 +1118,6 @@ app.post("/api/admin/referrals/users/:uuid/points/debit", requireAdminToken, asy
     }
     const status = err.status || 502;
     return clientError(res, status, err.publicMessage || "Не удалось списать реферальные баллы в RMW");
-  }
-});
-
-app.post("/api/admin/referrals/users/:uuid/points/credit", requireAdminToken, async (req, res) => {
-  try {
-    const uuid = assertValidUuid(req.params.uuid);
-    const amount = Number(req.body?.amount);
-    const comment = typeof req.body?.comment === "string" ? req.body.comment.trim() : "";
-
-    if (!Number.isInteger(amount) || amount <= 0) {
-      return clientError(res, 400, "Укажите положительное целое число баллов");
-    }
-    if (!comment) {
-      return clientError(res, 400, "Укажите причину начисления");
-    }
-
-    const data = await creditRmwReferralPoints(uuid, { amount, comment });
-    return res.json(data);
-  } catch (err) {
-    if (err?.message === "Invalid user UUID") {
-      return clientError(res, 400, "Некорректный UUID пользователя");
-    }
-    const status = err.status || 502;
-    return clientError(res, status, err.publicMessage || "Не удалось начислить реферальные баллы в RMW");
   }
 });
 
