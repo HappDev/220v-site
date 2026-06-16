@@ -1,5 +1,5 @@
 import { type FormEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronRight, GitBranch, Info, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, ChevronRight, GitBranch, Info, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 
@@ -206,7 +206,7 @@ const RISK_LABELS: Record<RiskLevel, string> = {
 };
 
 const RISK_REFERRERS_GRID_CLASS =
-  "grid grid-cols-1 gap-2 lg:grid-cols-[minmax(145px,1.2fr)_72px_120px_125px_92px_118px] lg:items-center";
+  "grid grid-cols-1 gap-2 lg:grid-cols-[minmax(145px,1.2fr)_minmax(160px,1fr)_80px_72px_120px_125px_92px_118px] lg:items-center";
 
 const EVENT_LABELS: Record<string, string> = {
   ref_click: "Переход",
@@ -228,6 +228,7 @@ const EVENT_FILTERS = [
 ];
 
 const HISTORY_PAGE_SIZE = 20;
+const REFERRER_DETAILS_BATCH_SIZE = 8;
 const DEFAULT_EXCHANGE_APPROVE_COMMENT = "Обмен баллов пользователем";
 const DEFAULT_EXCHANGE_REJECT_COMMENT = "Отклонено оператором";
 
@@ -502,31 +503,6 @@ function CopyableText({
   );
 }
 
-function CounterList({ title, items }: { title: string; items: CounterEntry[] }) {
-  return (
-    <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-lg font-bold text-foreground">{title}</h2>
-        <Badge variant="secondary">{items.length}</Badge>
-      </div>
-      {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Нет данных</p>
-      ) : (
-        <div className="space-y-2">
-          {items.map((item) => (
-            <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2">
-              <span className="min-w-0 truncate font-mono text-xs text-foreground">{item.key}</span>
-              <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-bold text-primary">
-                {item.count}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
 function DailyRegistrationsChart({ data }: { data: DailyRegistration[] }) {
   const totalRegistrations = data.reduce((sum, item) => sum + item.registrations, 0);
   const totalSuspicious = data.reduce((sum, item) => sum + item.suspicious, 0);
@@ -676,6 +652,7 @@ function ReferrerTable({
   const [debitLoading, setDebitLoading] = useState(false);
   const [debitError, setDebitError] = useState("");
   const [statusOverrides, setStatusOverrides] = useState<Record<string, ReferralUserStatus>>({});
+  const [detailsLoading, setDetailsLoading] = useState(false);
   const filtersRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -702,7 +679,7 @@ function ReferrerTable({
   const loadUserEmail = useCallback(
     async (uuid: string) => {
       const existing = userLookups[uuid];
-      if (existing?.loading || existing?.email !== undefined || existing?.error) return;
+      if (existing?.loading || existing?.email !== undefined) return;
 
       setUserLookups((prev) => ({ ...prev, [uuid]: { loading: true } }));
       try {
@@ -737,7 +714,7 @@ function ReferrerTable({
   const loadUserBalance = useCallback(
     async (uuid: string) => {
       const existing = balanceLookups[uuid];
-      if (existing?.loading || existing?.balance !== undefined || existing?.error) return;
+      if (existing?.loading || existing?.balance !== undefined) return;
 
       setBalanceLookups((prev) => ({ ...prev, [uuid]: { loading: true } }));
       try {
@@ -771,6 +748,22 @@ function ReferrerTable({
     },
     [balanceLookups, token],
   );
+
+  const loadVisibleReferrerDetails = useCallback(async () => {
+    setDetailsLoading(true);
+    try {
+      for (let index = 0; index < items.length; index += REFERRER_DETAILS_BATCH_SIZE) {
+        const batch = items.slice(index, index + REFERRER_DETAILS_BATCH_SIZE);
+        await Promise.all(
+          batch.map((item) =>
+            Promise.all([loadUserEmail(item.referrerUuid), loadUserBalance(item.referrerUuid)]),
+          ),
+        );
+      }
+    } finally {
+      setDetailsLoading(false);
+    }
+  }, [items, loadUserBalance, loadUserEmail]);
 
   const loadReferralHistory = useCallback(
     async (uuid: string, pageNum = 1) => {
@@ -914,6 +907,22 @@ function ReferrerTable({
             <AlertTriangle className="h-5 w-5 shrink-0 text-primary" />
             <h2 className="text-lg font-bold text-foreground">Рефереры с риском</h2>
           </div>
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => void loadVisibleReferrerDetails()}
+                  disabled={detailsLoading || items.length === 0 || !token.trim()}
+                >
+                  <RefreshCw className={cn("h-4 w-4", detailsLoading && "animate-spin")} aria-hidden="true" />
+                  Update
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Подгрузить email и баланс для текущих строк</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <div ref={filtersRef} className="relative">
             <TooltipProvider delayDuration={150}>
               <Tooltip>
@@ -951,10 +960,12 @@ function ReferrerTable({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead colSpan={6} className="h-auto p-0">
+                <TableHead colSpan={8} className="h-auto p-0">
                   <TooltipProvider delayDuration={150}>
                     <div className={cn(RISK_REFERRERS_GRID_CLASS, "px-3 py-3")}>
                       <span>Реферер</span>
+                      <span>Email</span>
+                      <span>Баллы</span>
                       <ColumnHeaderHint label="Score">
                         <p className="font-medium">Балл риска</p>
                         <p>Сумма очков за все сработавшие сигналы. Чем больше балл, тем подозрительнее реферер. Очки за сигналы:</p>
@@ -999,9 +1010,11 @@ function ReferrerTable({
                   eventType === "all" ? item.events : item.events.filter((event) => event.type === eventType);
                 const itemStatus =
                   statusOverrides[item.referrerUuid] || userLookups[item.referrerUuid]?.status || item.status;
+                const userLookup = userLookups[item.referrerUuid];
+                const balanceLookup = balanceLookups[item.referrerUuid];
                 return (
                   <TableRow key={item.referrerUuid}>
-                    <TableCell colSpan={6} className="p-0">
+                    <TableCell colSpan={8} className="p-0">
                       <details
                         className="group"
                         onToggle={(event) => {
@@ -1029,6 +1042,18 @@ function ReferrerTable({
                             />
                             <ReferralStatusBadges status={itemStatus} />
                           </span>
+                          <span className="min-w-0 truncate text-xs text-muted-foreground">
+                            {userLookup?.loading ? (
+                              "загрузка..."
+                            ) : userLookup?.email ? (
+                              <CopyableText value={userLookup.email} label="Email" className="align-baseline" />
+                            ) : (
+                              userLookup?.error || "—"
+                            )}
+                          </span>
+                          <span className="whitespace-nowrap text-xs text-muted-foreground">
+                            {balanceLookup?.loading ? "загрузка..." : balanceLookup?.balance ?? balanceLookup?.error ?? "—"}
+                          </span>
                           <span>
                             <ScoreBadge score={item.riskScore} />
                           </span>
@@ -1048,23 +1073,23 @@ function ReferrerTable({
                           <div className="mb-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-5">
                             <div className="min-w-0">
                               Email:{" "}
-                              {userLookups[item.referrerUuid]?.loading ? (
+                              {userLookup?.loading ? (
                                 "загрузка..."
-                              ) : userLookups[item.referrerUuid]?.email ? (
+                              ) : userLookup?.email ? (
                                 <CopyableText
-                                  value={userLookups[item.referrerUuid]?.email || ""}
+                                  value={userLookup.email}
                                   label="Email"
                                   className="align-baseline"
                                 />
                               ) : (
-                                userLookups[item.referrerUuid]?.error || "—"
+                                userLookup?.error || "—"
                               )}
                             </div>
                             <div>
                               Баллы:{" "}
-                              {balanceLookups[item.referrerUuid]?.loading
+                              {balanceLookup?.loading
                                 ? "загрузка..."
-                                : balanceLookups[item.referrerUuid]?.balance ?? balanceLookups[item.referrerUuid]?.error ?? "—"}
+                                : balanceLookup?.balance ?? balanceLookup?.error ?? "—"}
                             </div>
                             <div>Email hashes: {item.unique.referredEmailHashes}</div>
                             <div>User prefixes: {item.unique.referredUuidPrefixes}</div>
@@ -1468,12 +1493,6 @@ export default function AdminReferrals() {
     });
   }, [eventType, referrerFilter, riskFilter, summary]);
 
-  const filteredEvents = useMemo(() => {
-    if (!summary) return [];
-    if (eventType === "all") return summary.events;
-    return summary.events.filter((event) => event.type === eventType);
-  }, [eventType, summary]);
-
   const referrerFiltersPanel = (
     <>
       <label className="text-sm font-semibold text-foreground">
@@ -1697,28 +1716,6 @@ export default function AdminReferrals() {
           <DailyRegistrationsChart data={summary.dailyRegistrations || []} />
 
           <ReferrerTable items={filteredReferrers} eventType={eventType} token={token} filtersPanel={referrerFiltersPanel} />
-
-          <div className="grid gap-5 lg:grid-cols-3">
-            <CounterList title="Top IP hashes" items={summary.topIps} />
-            <CounterList title="Top User-Agent hashes" items={summary.topUserAgents} />
-            <CounterList title="Top Fingerprint hashes" items={summary.topFingerprints} />
-          </div>
-
-          <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-bold text-foreground">Последние события</h2>
-              <Badge variant="secondary">{filteredEvents.length}</Badge>
-            </div>
-            {filteredEvents.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Нет событий выбранного типа</p>
-            ) : (
-              <div className="space-y-2">
-                {filteredEvents.map((event, index) => (
-                  <EventCard key={event.id || `${event.at}-${index}`} event={event} />
-                ))}
-              </div>
-            )}
-          </section>
         </>
       )}
     </AdminPageShell>
