@@ -1770,12 +1770,19 @@ body.landing-no-scroll { overflow: hidden; }
 .landing-root .support2-chat__form {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   margin-top: 14px;
 }
+.landing-root .support2-chat__input-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
 .landing-root .support2-chat__form textarea {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   resize: none;
   min-height: 48px;
@@ -1798,12 +1805,6 @@ body.landing-no-scroll { overflow: hidden; }
 }
 .landing-root .support2-chat__form textarea::placeholder {
   color: var(--muted);
-}
-.landing-root .support2-chat__actions {
-  align-self: end;
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 .landing-root .support2-chat__file-input {
   display: none;
@@ -1832,10 +1833,12 @@ body.landing-no-scroll { overflow: hidden; }
   opacity: 0.45;
 }
 .landing-root .support2-chat__file {
-  max-width: 220px;
+  width: 100%;
+  max-width: 100%;
   min-height: 48px;
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 7px 8px 7px 12px;
   border: 1px solid var(--border);
@@ -1865,7 +1868,27 @@ body.landing-no-scroll { overflow: hidden; }
   cursor: pointer;
 }
 .landing-root .support2-chat__send {
-  min-height: 48px;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(198, 255, 61, 0.34);
+  border-radius: 999px;
+  background: rgba(198, 255, 61, 0.14);
+  color: var(--accent);
+  cursor: pointer;
+  transition: border-color .2s ease, background .2s ease, transform .2s ease;
+}
+.landing-root .support2-chat__send:hover:not(:disabled) {
+  border-color: rgba(198, 255, 61, 0.62);
+  background: rgba(198, 255, 61, 0.2);
+  transform: translateY(-1px);
+}
+.landing-root .support2-chat__send:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 .landing-root .support2-chat__sync {
   position: relative;
@@ -2133,8 +2156,7 @@ body.landing-no-scroll { overflow: hidden; }
   .landing-root .app-page__notice {
     margin-top: 80px;
   }
-  .landing-root .support2-chat__header,
-  .landing-root .support2-chat__form {
+  .landing-root .support2-chat__header {
     grid-template-columns: 1fr;
   }
   .landing-root .support2-chat__header {
@@ -2144,15 +2166,8 @@ body.landing-no-scroll { overflow: hidden; }
     justify-content: flex-start;
     max-width: none;
   }
-  .landing-root .support2-chat__actions {
-    width: 100%;
-    flex-wrap: wrap;
-  }
   .landing-root .support2-chat__file {
-    max-width: calc(100% - 58px);
-  }
-  .landing-root .support2-chat__send {
-    width: 100%;
+    max-width: 100%;
   }
 }
 

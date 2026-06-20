@@ -977,30 +977,16 @@ const Chat = () => {
                   <div ref={messagesEndRef} />
                 </div>
 
-                <form
-                  className="support2-chat__form"
-                  onSubmit={handleSubmit}
-                >
-                  <textarea
-                    ref={textareaRef}
-                    value={draft}
-                    onChange={(event) => {
-                      setDraft(event.target.value);
-                      resizeDraftTextarea(event.currentTarget);
-                    }}
-                    placeholder="Опишите вопрос..."
-                    enterKeyHint="send"
-                    rows={1}
-                    disabled={!email || sending}
-                    onKeyDown={(event) => {
-                      const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
-                      if (event.key === "Enter" && (event.metaKey || event.ctrlKey || (coarsePointer && !event.shiftKey))) {
-                        event.preventDefault();
-                        event.currentTarget.form?.requestSubmit();
-                      }
-                    }}
-                  />
-                  <div className="support2-chat__actions">
+                <form className="support2-chat__form" onSubmit={handleSubmit}>
+                  {selectedFile ? (
+                    <div className="support2-chat__file" title={selectedFile.name}>
+                      <span>{selectedFile.name}</span>
+                      <button type="button" onClick={clearSelectedFile} aria-label="Убрать файл" disabled={sending}>
+                        <X size={14} aria-hidden="true" />
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="support2-chat__input-bar">
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -1019,21 +1005,38 @@ const Chat = () => {
                     >
                       <Paperclip size={18} aria-hidden="true" />
                     </button>
-                    {selectedFile ? (
-                      <div className="support2-chat__file" title={selectedFile.name}>
-                        <span>{selectedFile.name}</span>
-                        <button type="button" onClick={clearSelectedFile} aria-label="Убрать файл" disabled={sending}>
-                          <X size={14} aria-hidden="true" />
-                        </button>
-                      </div>
-                    ) : null}
+                    <textarea
+                      ref={textareaRef}
+                      value={draft}
+                      onChange={(event) => {
+                        setDraft(event.target.value);
+                        resizeDraftTextarea(event.currentTarget);
+                      }}
+                      placeholder="Опишите вопрос..."
+                      enterKeyHint="send"
+                      rows={1}
+                      disabled={!email || sending}
+                      onFocus={() => {
+                        window.setTimeout(() => {
+                          textareaRef.current?.scrollIntoView({ block: "nearest", behavior: "auto" });
+                        }, 250);
+                      }}
+                      onKeyDown={(event) => {
+                        const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
+                        if (event.key === "Enter" && (event.metaKey || event.ctrlKey || (coarsePointer && !event.shiftKey))) {
+                          event.preventDefault();
+                          event.currentTarget.form?.requestSubmit();
+                        }
+                      }}
+                    />
                     <button
                       type="submit"
-                      className="btn btn--primary support2-chat__send"
+                      className="support2-chat__send"
                       disabled={!email || (!draft.trim() && !selectedFile) || sending}
+                      aria-label="Отправить"
+                      title="Отправить"
                     >
-                      {sending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send size={16} />}
-                      Отправить
+                      {sending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send size={18} />}
                     </button>
                   </div>
                 </form>
