@@ -663,8 +663,8 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <LandingShell className="landing-root--with-sidebar">
-        <DashboardSidebar items={[]} onLogout={handleLogout} />
+      <LandingShell className="landing-root--with-sidebar landing-root--dashboard">
+        <DashboardSidebar items={[]} onLogout={handleLogout} mobileTitle="Личный кабинет" />
         <main className="app-page">
           <div className="container">
             <div className="app-page__notice app-page__notice--loader">
@@ -709,8 +709,8 @@ const Dashboard = () => {
 
   if (error) {
     return (
-      <LandingShell className="landing-root--with-sidebar">
-        <DashboardSidebar items={[]} onLogout={handleLogout} />
+      <LandingShell className="landing-root--with-sidebar landing-root--dashboard">
+        <DashboardSidebar items={[]} onLogout={handleLogout} mobileTitle="Личный кабинет" />
         <main className="app-page">
           <div className="container">
             <div className="app-page__notice">
@@ -727,8 +727,13 @@ const Dashboard = () => {
   }
 
   return (
-    <LandingShell className="landing-root--with-sidebar">
-      <DashboardSidebar items={sidebarItems} onLogout={handleLogout} email={email || undefined} />
+    <LandingShell className="landing-root--with-sidebar landing-root--dashboard">
+      <DashboardSidebar
+        items={sidebarItems}
+        onLogout={handleLogout}
+        email={email || undefined}
+        mobileTitle="Личный кабинет"
+      />
 
       <main>
         <section className="app-page">

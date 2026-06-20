@@ -3264,6 +3264,9 @@ body.landing-no-scroll { overflow: hidden; }
   .landing-root .dash-topbar {
     align-items: flex-start;
   }
+  .landing-root--dashboard .dash-topbar__kicker {
+    display: none;
+  }
   .landing-root .dash-grid {
     grid-template-columns: 1fr;
   }
