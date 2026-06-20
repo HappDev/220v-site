@@ -1,8 +1,10 @@
+# syntax=docker/dockerfile:1.7
 # node:22-alpine — pin digest in production deploys
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY api/package.json api/package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
+RUN --mount=type=cache,id=v220-api-npm,target=/root/.npm \
+    if [ -f package-lock.json ]; then npm ci --omit=dev --prefer-offline --no-audit --fund=false; else npm install --omit=dev --prefer-offline --no-audit --fund=false; fi
 
 FROM node:22-alpine
 ENV NODE_ENV=production
