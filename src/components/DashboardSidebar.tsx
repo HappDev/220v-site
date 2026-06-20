@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentType, type SVGProps } from "react";
+import { useEffect, useRef, useState, type ComponentType, type SVGProps } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   CreditCard,
@@ -41,6 +41,23 @@ const isPathMatch = (
   );
 };
 
+const MOBILE_TITLE_COLLAPSE_OFFSET = 8;
+const MOBILE_SCROLL_SELECTOR = "[data-dashboard-mobile-scroll]";
+
+const hasCollapsedMobileTitleScroll = () => {
+  const scrollingElement = document.scrollingElement || document.documentElement;
+  const pageScrollTop = window.scrollY || scrollingElement?.scrollTop || 0;
+
+  if (pageScrollTop > MOBILE_TITLE_COLLAPSE_OFFSET) return true;
+
+  const scrollContainers = document.querySelectorAll<HTMLElement>(MOBILE_SCROLL_SELECTOR);
+  for (const container of scrollContainers) {
+    if (container.scrollTop > MOBILE_TITLE_COLLAPSE_OFFSET) return true;
+  }
+
+  return false;
+};
+
 type DashboardSidebarProps = {
   items: DashboardSidebarItem[];
   onLogout: () => void;
@@ -58,6 +75,8 @@ export const DashboardSidebar = ({
 }: DashboardSidebarProps) => {
   const [open, setOpen] = useState(false);
   const [mobileHintOpen, setMobileHintOpen] = useState(false);
+  const [mobileTitleCollapsed, setMobileTitleCollapsed] = useState(false);
+  const collapseFrameRef = useRef<number | null>(null);
   const { pathname } = useLocation();
 
   useEffect(() => {
@@ -89,11 +108,53 @@ export const DashboardSidebar = ({
     setMobileHintOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!mobileTitle) {
+      setMobileTitleCollapsed(false);
+      return;
+    }
+
+    const updateCollapsed = () => {
+      collapseFrameRef.current = null;
+      const collapsed = hasCollapsedMobileTitleScroll();
+      setMobileTitleCollapsed((current) => (current === collapsed ? current : collapsed));
+      if (collapsed) setMobileHintOpen(false);
+    };
+
+    const requestUpdate = () => {
+      if (collapseFrameRef.current !== null) return;
+      collapseFrameRef.current = window.requestAnimationFrame(updateCollapsed);
+    };
+
+    const scrollOptions: AddEventListenerOptions = { capture: true, passive: true };
+
+    requestUpdate();
+    window.addEventListener("scroll", requestUpdate, { passive: true });
+    document.addEventListener("scroll", requestUpdate, scrollOptions);
+    window.addEventListener("resize", requestUpdate);
+    window.visualViewport?.addEventListener("resize", requestUpdate);
+
+    return () => {
+      if (collapseFrameRef.current !== null) {
+        window.cancelAnimationFrame(collapseFrameRef.current);
+        collapseFrameRef.current = null;
+      }
+      window.removeEventListener("scroll", requestUpdate);
+      document.removeEventListener("scroll", requestUpdate, scrollOptions);
+      window.removeEventListener("resize", requestUpdate);
+      window.visualViewport?.removeEventListener("resize", requestUpdate);
+    };
+  }, [mobileTitle, pathname]);
+
   const handleItem = (item: DashboardSidebarItem) => {
     setOpen(false);
     setMobileHintOpen(false);
     item.onClick();
   };
+
+  const mobileTitleClassName = `dashboard-sidebar__mobile-title${
+    mobileHintOpen ? " dashboard-sidebar__mobile-title--open" : ""
+  }${mobileTitleCollapsed ? " dashboard-sidebar__mobile-title--collapsed" : ""}`;
 
   return (
     <>
@@ -113,24 +174,24 @@ export const DashboardSidebar = ({
         <>
           <button
             type="button"
-            className={`dashboard-sidebar__mobile-title${
-              mobileHintOpen ? " dashboard-sidebar__mobile-title--open" : ""
-            }`}
-            aria-expanded={mobileHintOpen}
+            className={mobileTitleClassName}
+            aria-expanded={mobileHintOpen && !mobileTitleCollapsed}
             aria-controls="dashboard-mobile-hint"
+            aria-hidden={mobileTitleCollapsed || undefined}
+            tabIndex={mobileTitleCollapsed ? -1 : undefined}
             onClick={() => setMobileHintOpen((value) => !value)}
           >
             <span>{mobileTitle}</span>
             <ChevronDown className="dashboard-sidebar__mobile-title-chevron" aria-hidden="true" />
           </button>
-          {mobileHintOpen ? (
+          {mobileHintOpen && !mobileTitleCollapsed ? (
             <div id="dashboard-mobile-hint" className="dashboard-sidebar__mobile-hint" role="status">
               {mobileHint}
             </div>
           ) : null}
         </>
       ) : mobileTitle ? (
-        <div className="dashboard-sidebar__mobile-title" aria-hidden="true">
+        <div className={mobileTitleClassName} aria-hidden="true">
           {mobileTitle}
         </div>
       ) : null}

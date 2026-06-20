@@ -2559,6 +2559,25 @@ body.landing-no-scroll { overflow: hidden; }
     cursor: default;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
+    transform-origin: left center;
+    transition:
+      transform 0.24s ease,
+      opacity 0.2s ease,
+      max-width 0.24s ease,
+      padding 0.24s ease,
+      border-color 0.18s ease,
+      color 0.18s ease;
+    will-change: transform, opacity, max-width;
+  }
+  .landing-root .dashboard-sidebar__mobile-title--collapsed {
+    z-index: 54;
+    max-width: 48px;
+    padding-left: 0;
+    padding-right: 0;
+    opacity: 0;
+    pointer-events: none;
+    border-color: transparent;
+    transform: translateX(-60px) scaleX(0.18);
   }
   .landing-root button.dashboard-sidebar__mobile-title {
     cursor: pointer;

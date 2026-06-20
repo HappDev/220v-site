@@ -939,7 +939,12 @@ const Chat = () => {
                   </div>
                 ) : null}
 
-                <div ref={messagesContainerRef} className="support2-chat__messages" aria-live="polite">
+                <div
+                  ref={messagesContainerRef}
+                  className="support2-chat__messages"
+                  data-dashboard-mobile-scroll
+                  aria-live="polite"
+                >
                   {initialLoading ? (
                     <div className="support2-chat__state">
                       <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
