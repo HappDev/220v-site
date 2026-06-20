@@ -2354,6 +2354,10 @@ body.landing-no-scroll { overflow: hidden; }
   border-color: rgba(198, 255, 61, 0.35);
 }
 
+.landing-root .dashboard-sidebar__mobile-title {
+  display: none;
+}
+
 .landing-root .dashboard-sidebar__backdrop {
   display: none;
   position: fixed;
@@ -2522,6 +2526,30 @@ body.landing-no-scroll { overflow: hidden; }
   .landing-root .dashboard-sidebar__burger {
     display: inline-flex;
   }
+  .landing-root .dashboard-sidebar__mobile-title {
+    position: fixed;
+    top: calc(16px + var(--safe-top));
+    left: calc(76px + var(--safe-left));
+    z-index: 55;
+    display: inline-flex;
+    align-items: center;
+    max-width: calc(100vw - 92px - var(--safe-left) - var(--safe-right));
+    height: 48px;
+    padding: 0 16px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: rgba(10, 10, 10, 0.85);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    box-sizing: border-box;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
   .landing-root .dashboard-sidebar__close {
     display: inline-flex;
   }
@@ -2534,11 +2562,16 @@ body.landing-no-scroll { overflow: hidden; }
 
   /*
    * Chat page is a single fixed-size shell on mobile: viewport-locked, no double
-   * scroll, footer hidden. --chat-vh is set from window.visualViewport so the
-   * layout shrinks correctly when the on-screen keyboard appears.
+   * scroll, footer hidden. --chat-vh/--chat-vv-top come from window.visualViewport
+   * so Safari keeps the composer inside the visible area when the keyboard opens.
    */
   .landing-root--chat {
+    position: fixed;
+    top: var(--chat-vv-top, 0px);
+    right: 0;
+    left: 0;
     height: var(--chat-vh, 100dvh);
+    width: 100%;
     min-height: 0;
     overflow: hidden;
     display: flex;
@@ -2588,6 +2621,17 @@ body.landing-no-scroll { overflow: hidden; }
   }
   .landing-root--chat .support2-chat__header {
     margin-bottom: 12px;
+  }
+  .landing-root--chat .support2-chat__title-wrap {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    border: 0;
+    white-space: nowrap;
   }
   .landing-root--chat .support-card.support2-chat .support-card__title {
     font-size: 18px;

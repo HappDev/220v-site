@@ -362,7 +362,6 @@ const Chat = () => {
   const [lightboxImage, setLightboxImage] = useState<ChatAttachment | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const keyboardInsetRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const previewUrlsRef = useRef<Set<string>>(new Set());
@@ -726,34 +725,32 @@ const Chat = () => {
   useEffect(() => {
     const root = document.documentElement;
     const visualViewport = window.visualViewport;
+    let animationFrame = 0;
 
     const update = () => {
-      const height = visualViewport?.height ?? window.innerHeight;
-      root.style.setProperty("--chat-vh", `${Math.round(height)}px`);
-
-      if (visualViewport) {
-        const inset = Math.max(
-          0,
-          window.innerHeight - visualViewport.height - visualViewport.offsetTop,
-        );
-        const rounded = Math.round(inset);
-        const keyboardOpening = rounded > 0 && keyboardInsetRef.current === 0;
-        keyboardInsetRef.current = rounded;
-        if (keyboardOpening) {
-          textareaRef.current?.scrollIntoView({ block: "nearest", behavior: "auto" });
-        }
-      }
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        const height = visualViewport?.height ?? window.innerHeight;
+        const top = visualViewport?.offsetTop ?? 0;
+        root.style.setProperty("--chat-vh", `${Math.round(height)}px`);
+        root.style.setProperty("--chat-vv-top", `${Math.round(top)}px`);
+        scrollMessagesToEnd();
+      });
     };
 
     update();
     visualViewport?.addEventListener("resize", update);
+    visualViewport?.addEventListener("scroll", update);
     window.addEventListener("resize", update);
     return () => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
       visualViewport?.removeEventListener("resize", update);
+      visualViewport?.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
       root.style.removeProperty("--chat-vh");
+      root.style.removeProperty("--chat-vv-top");
     };
-  }, []);
+  }, [scrollMessagesToEnd]);
 
   useEffect(() => {
     const nextPreviewUrls = new Set(
@@ -878,7 +875,12 @@ const Chat = () => {
 
   return (
     <LandingShell className="landing-root--with-sidebar landing-root--chat">
-      <DashboardSidebar items={items} onLogout={handleLogout} email={email || undefined} />
+      <DashboardSidebar
+        items={items}
+        onLogout={handleLogout}
+        email={email || undefined}
+        mobileTitle="Диалог с оператором"
+      />
 
       <main>
         <section className="app-page">
@@ -907,7 +909,7 @@ const Chat = () => {
             <div className="support-layout support2-layout">
               <section className="support-card support2-chat">
                 <div className="support2-chat__header">
-                  <div>
+                  <div className="support2-chat__title-wrap">
                     <h2 className="support-card__title">Диалог с оператором</h2>
                   </div>
                   <div className="support2-chat__badges" aria-label="Статус чата">
@@ -1016,11 +1018,6 @@ const Chat = () => {
                       enterKeyHint="send"
                       rows={1}
                       disabled={!email || sending}
-                      onFocus={() => {
-                        window.setTimeout(() => {
-                          textareaRef.current?.scrollIntoView({ block: "nearest", behavior: "auto" });
-                        }, 250);
-                      }}
                       onKeyDown={(event) => {
                         const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
                         if (event.key === "Enter" && (event.metaKey || event.ctrlKey || (coarsePointer && !event.shiftKey))) {

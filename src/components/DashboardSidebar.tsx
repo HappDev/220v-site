@@ -44,9 +44,15 @@ type DashboardSidebarProps = {
   items: DashboardSidebarItem[];
   onLogout: () => void;
   email?: string;
+  mobileTitle?: string;
 };
 
-export const DashboardSidebar = ({ items, onLogout, email }: DashboardSidebarProps) => {
+export const DashboardSidebar = ({
+  items,
+  onLogout,
+  email,
+  mobileTitle,
+}: DashboardSidebarProps) => {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
 
@@ -81,6 +87,11 @@ export const DashboardSidebar = ({ items, onLogout, email }: DashboardSidebarPro
       >
         <MenuIcon className="h-5 w-5" />
       </button>
+      {mobileTitle ? (
+        <div className="dashboard-sidebar__mobile-title" aria-hidden="true">
+          {mobileTitle}
+        </div>
+      ) : null}
 
       {open ? (
         <div
