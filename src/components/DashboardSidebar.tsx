@@ -8,6 +8,7 @@ import {
   LifeBuoy,
   MoreHorizontal,
   LogOut,
+  ChevronDown,
   Menu as MenuIcon,
   X as CloseIcon,
 } from "lucide-react";
@@ -45,6 +46,7 @@ type DashboardSidebarProps = {
   onLogout: () => void;
   email?: string;
   mobileTitle?: string;
+  mobileHint?: string;
 };
 
 export const DashboardSidebar = ({
@@ -52,8 +54,10 @@ export const DashboardSidebar = ({
   onLogout,
   email,
   mobileTitle,
+  mobileHint,
 }: DashboardSidebarProps) => {
   const [open, setOpen] = useState(false);
+  const [mobileHintOpen, setMobileHintOpen] = useState(false);
   const { pathname } = useLocation();
 
   useEffect(() => {
@@ -71,8 +75,23 @@ export const DashboardSidebar = ({
     };
   }, [open]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileHintOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    setMobileHintOpen(false);
+  }, [pathname]);
+
   const handleItem = (item: DashboardSidebarItem) => {
     setOpen(false);
+    setMobileHintOpen(false);
     item.onClick();
   };
 
@@ -83,11 +102,34 @@ export const DashboardSidebar = ({
         className="dashboard-sidebar__burger"
         aria-label="Открыть меню"
         aria-expanded={open}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setMobileHintOpen(false);
+          setOpen(true);
+        }}
       >
         <MenuIcon className="h-5 w-5" />
       </button>
-      {mobileTitle ? (
+      {mobileTitle && mobileHint ? (
+        <>
+          <button
+            type="button"
+            className={`dashboard-sidebar__mobile-title${
+              mobileHintOpen ? " dashboard-sidebar__mobile-title--open" : ""
+            }`}
+            aria-expanded={mobileHintOpen}
+            aria-controls="dashboard-mobile-hint"
+            onClick={() => setMobileHintOpen((value) => !value)}
+          >
+            <span>{mobileTitle}</span>
+            <ChevronDown className="dashboard-sidebar__mobile-title-chevron" aria-hidden="true" />
+          </button>
+          {mobileHintOpen ? (
+            <div id="dashboard-mobile-hint" className="dashboard-sidebar__mobile-hint" role="status">
+              {mobileHint}
+            </div>
+          ) : null}
+        </>
+      ) : mobileTitle ? (
         <div className="dashboard-sidebar__mobile-title" aria-hidden="true">
           {mobileTitle}
         </div>
@@ -156,6 +198,7 @@ export const DashboardSidebar = ({
             className="dashboard-sidebar__link dashboard-sidebar__link--logout"
             onClick={() => {
               setOpen(false);
+              setMobileHintOpen(false);
               onLogout();
             }}
           >

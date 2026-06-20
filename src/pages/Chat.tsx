@@ -873,6 +873,9 @@ const Chat = () => {
     }
   };
 
+  const operatorMobileHint =
+    onlineCount === null ? "Операторы онлайн: проверяем" : `Операторы онлайн: ${onlineCount}`;
+
   return (
     <LandingShell className="landing-root--with-sidebar landing-root--chat">
       <DashboardSidebar
@@ -880,6 +883,7 @@ const Chat = () => {
         onLogout={handleLogout}
         email={email || undefined}
         mobileTitle="Диалог с оператором"
+        mobileHint={operatorMobileHint}
       />
 
       <main>
@@ -913,7 +917,7 @@ const Chat = () => {
                     <h2 className="support-card__title">Диалог с оператором</h2>
                   </div>
                   <div className="support2-chat__badges" aria-label="Статус чата">
-                    <span className="support2-chat__badge">
+                    <span className="support2-chat__badge support2-chat__badge--operators">
                       {onlineCount === null
                         ? "Операторы: проверяем"
                         : onlineCount > 0

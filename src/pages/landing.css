@@ -2358,6 +2358,10 @@ body.landing-no-scroll { overflow: hidden; }
   display: none;
 }
 
+.landing-root .dashboard-sidebar__mobile-hint {
+  display: none;
+}
+
 .landing-root .dashboard-sidebar__backdrop {
   display: none;
   position: fixed;
@@ -2533,6 +2537,8 @@ body.landing-no-scroll { overflow: hidden; }
     z-index: 55;
     display: inline-flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     max-width: calc(100vw - 92px - var(--safe-left) - var(--safe-right));
     height: 48px;
     padding: 0 16px;
@@ -2541,12 +2547,58 @@ body.landing-no-scroll { overflow: hidden; }
     border-radius: 12px;
     background: rgba(10, 10, 10, 0.85);
     color: #fff;
+    font-family: inherit;
     font-size: 15px;
     font-weight: 700;
     line-height: 1;
+    text-align: left;
     text-overflow: ellipsis;
     white-space: nowrap;
     box-sizing: border-box;
+    appearance: none;
+    cursor: default;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .landing-root button.dashboard-sidebar__mobile-title {
+    cursor: pointer;
+  }
+  .landing-root .dashboard-sidebar__mobile-title:hover,
+  .landing-root .dashboard-sidebar__mobile-title--open {
+    color: var(--accent);
+    border-color: rgba(198, 255, 61, 0.35);
+  }
+  .landing-root .dashboard-sidebar__mobile-title span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .landing-root .dashboard-sidebar__mobile-title-chevron {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    transition: transform 0.18s ease;
+  }
+  .landing-root .dashboard-sidebar__mobile-title--open .dashboard-sidebar__mobile-title-chevron {
+    transform: rotate(180deg);
+  }
+  .landing-root .dashboard-sidebar__mobile-hint {
+    position: fixed;
+    top: calc(72px + var(--safe-top));
+    left: calc(76px + var(--safe-left));
+    z-index: 56;
+    display: block;
+    max-width: calc(100vw - 92px - var(--safe-left) - var(--safe-right));
+    padding: 11px 14px;
+    border: 1px solid rgba(198, 255, 61, 0.24);
+    border-radius: 12px;
+    background: rgba(10, 10, 10, 0.9);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.38);
+    color: var(--muted-2);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.25;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
   }
@@ -2621,6 +2673,9 @@ body.landing-no-scroll { overflow: hidden; }
   }
   .landing-root--chat .support2-chat__header {
     margin-bottom: 12px;
+  }
+  .landing-root--chat .support2-chat__badge--operators {
+    display: none;
   }
   .landing-root--chat .support2-chat__title-wrap {
     position: absolute;
