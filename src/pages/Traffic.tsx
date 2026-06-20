@@ -76,6 +76,7 @@ const Traffic = () => {
         <section className="price-page">
           <div className="container">
             <div className="price-page__head">
+              <h1 className="price-page__title price-page__title--mobile-hidden">Купить трафик</h1>
               <p className="price-page__subtitle">
                 Дополнительные пакеты трафика для LTE-серверов
               </p>

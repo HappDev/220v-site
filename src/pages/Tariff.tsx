@@ -111,6 +111,7 @@ const Tariff = () => {
         <section className="price-page">
           <div className="container">
             <div className="price-page__head">
+              <h1 className="price-page__title price-page__title--mobile-hidden">Купить тариф</h1>
               <p className="price-page__subtitle">
                 Выберите срок подписки — чем дольше, тем выгоднее
               </p>
