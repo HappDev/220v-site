@@ -527,8 +527,13 @@ const Referrals = () => {
   const showDetailsLoader = programStarted && loading && historyItems.length === 0 && !error;
 
   return (
-    <LandingShell className="landing-root--with-sidebar">
-      <DashboardSidebar items={items} onLogout={handleLogout} email={email || undefined} />
+    <LandingShell className="landing-root--with-sidebar landing-root--referrals">
+      <DashboardSidebar
+        items={items}
+        onLogout={handleLogout}
+        email={email || undefined}
+        mobileTitle="Реферальная программа"
+      />
 
       <main>
         <section className="app-page">

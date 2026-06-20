@@ -3260,12 +3260,17 @@ body.landing-no-scroll { overflow: hidden; }
   }
 }
 
+@media (max-width: 960px) {
+  .landing-root--dashboard .dash-topbar__kicker,
+  .landing-root--referrals .dash-topbar__kicker,
+  .landing-root--instructions .app-page__title {
+    display: none;
+  }
+}
+
 @media (max-width: 720px) {
   .landing-root .dash-topbar {
     align-items: flex-start;
-  }
-  .landing-root--dashboard .dash-topbar__kicker {
-    display: none;
   }
   .landing-root .dash-grid {
     grid-template-columns: 1fr;

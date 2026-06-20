@@ -555,8 +555,13 @@ const Instructions = () => {
   const activePlatform = platformItems.find((item) => item.id === platform) ?? platformItems[0];
 
   return (
-    <LandingShell className="landing-root--with-sidebar">
-      <DashboardSidebar items={items} onLogout={handleLogout} email={email || undefined} />
+    <LandingShell className="landing-root--with-sidebar landing-root--instructions">
+      <DashboardSidebar
+        items={items}
+        onLogout={handleLogout}
+        email={email || undefined}
+        mobileTitle="Инструкции"
+      />
 
       <main>
         <section className="app-page">
