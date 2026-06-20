@@ -100,13 +100,17 @@ const Tariff = () => {
 
   return (
     <LandingShell className="landing-root--with-sidebar">
-      <DashboardSidebar items={items} onLogout={handleLogout} email={email || undefined} />
+      <DashboardSidebar
+        items={items}
+        onLogout={handleLogout}
+        email={email || undefined}
+        mobileTitle="Покупка тарифа"
+      />
 
       <main>
         <section className="price-page">
           <div className="container">
             <div className="price-page__head">
-              <h1 className="price-page__title">Купить тариф</h1>
               <p className="price-page__subtitle">
                 Выберите срок подписки — чем дольше, тем выгоднее
               </p>

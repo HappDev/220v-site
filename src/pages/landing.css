@@ -2630,6 +2630,9 @@ body.landing-no-scroll { overflow: hidden; }
   .landing-root--with-sidebar .app-page {
     padding-top: 72px;
   }
+  .landing-root--with-sidebar .price-page {
+    padding-top: calc(88px + var(--safe-top));
+  }
 
   /*
    * Chat page is a single fixed-size shell on mobile: viewport-locked, no double
