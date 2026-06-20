@@ -354,6 +354,7 @@ const Chat = () => {
   const [initialLoading, setInitialLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [composerFocused, setComposerFocused] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [onlineCount, setOnlineCount] = useState<number | null>(null);
@@ -877,7 +878,11 @@ const Chat = () => {
     onlineCount === null ? "Операторы онлайн: проверяем" : `Операторы онлайн: ${onlineCount}`;
 
   return (
-    <LandingShell className="landing-root--with-sidebar landing-root--chat">
+    <LandingShell
+      className={`landing-root--with-sidebar landing-root--chat${
+        composerFocused ? " landing-root--chat-composer-focused" : ""
+      }`}
+    >
       <DashboardSidebar
         items={items}
         onLogout={handleLogout}
@@ -1022,6 +1027,8 @@ const Chat = () => {
                       enterKeyHint="send"
                       rows={1}
                       disabled={!email || sending}
+                      onFocus={() => setComposerFocused(true)}
+                      onBlur={() => setComposerFocused(false)}
                       onKeyDown={(event) => {
                         const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
                         if (event.key === "Enter" && (event.metaKey || event.ctrlKey || (coarsePointer && !event.shiftKey))) {

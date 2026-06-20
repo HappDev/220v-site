@@ -2642,6 +2642,13 @@ body.landing-no-scroll { overflow: hidden; }
     padding: calc(72px + var(--safe-top)) 0 0;
     display: flex;
   }
+  .landing-root--chat.landing-root--chat-composer-focused .app-page {
+    padding-top: 0;
+  }
+  .landing-root--chat.landing-root--chat-composer-focused .dashboard-sidebar__burger,
+  .landing-root--chat.landing-root--chat-composer-focused .dashboard-sidebar__mobile-title {
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+  }
   .landing-root--chat .container {
     flex: 1;
     min-height: 0;
