@@ -17,6 +17,7 @@ import TrafficPay from "./pages/TrafficPay";
 import Instructions from "./pages/Instructions";
 import Referrals from "./pages/Referrals";
 import Terms from "./pages/Terms";
+import UnsubscribeEmail from "./pages/UnsubscribeEmail";
 import NotFound from "./pages/NotFound";
 import AdminRedis from "./pages/AdminRedis";
 import AdminReferrals from "./pages/AdminReferrals";
@@ -95,6 +96,7 @@ const App = () => (
             }
           />
           <Route path="/terms" element={<Terms />} />
+          <Route path="/unsubscribe-email" element={<UnsubscribeEmail />} />
           <Route
             path="/support"
             element={

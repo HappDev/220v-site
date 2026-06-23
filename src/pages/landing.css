@@ -832,6 +832,259 @@ body.landing-no-scroll { overflow: hidden; }
   flex-wrap: wrap;
 }
 
+/* ---------- Email unsubscribe ---------- */
+.landing-root .unsubscribe-page {
+  min-height: calc(100svh - 180px);
+  min-height: calc(100dvh - 180px);
+  padding: 72px 0 96px;
+  display: flex;
+  align-items: center;
+}
+.landing-root .unsubscribe-page__container {
+  display: flex;
+  justify-content: center;
+}
+.landing-root .unsubscribe-card {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-width: 720px;
+  padding: 40px 34px 34px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(198, 255, 61, 0.10), transparent 44%),
+    linear-gradient(180deg, var(--card-2), var(--card));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.48), 0 0 0 1px rgba(198, 255, 61, 0.04);
+}
+.landing-root .unsubscribe-card--result {
+  max-width: 620px;
+  text-align: center;
+}
+.landing-root .unsubscribe-card__icon,
+.landing-root .unsubscribe-status {
+  width: 58px;
+  height: 58px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+  border-radius: 50%;
+  background: rgba(198, 255, 61, 0.12);
+  color: var(--accent);
+}
+.landing-root .unsubscribe-card__icon svg,
+.landing-root .unsubscribe-status svg {
+  width: 28px;
+  height: 28px;
+}
+.landing-root .unsubscribe-status--invalid {
+  background: rgba(255, 217, 61, 0.10);
+  color: #ffd93d;
+}
+.landing-root .unsubscribe-status--success {
+  background: rgba(198, 255, 61, 0.12);
+  color: var(--accent);
+}
+.landing-root .unsubscribe-card__eyebrow {
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+.landing-root .unsubscribe-card h1 {
+  margin-bottom: 14px;
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+}
+.landing-root .unsubscribe-card__lead,
+.landing-root .unsubscribe-card--result p {
+  max-width: 560px;
+  margin-bottom: 28px;
+  color: var(--muted-2);
+  font-size: 16px;
+  line-height: 1.65;
+}
+.landing-root .unsubscribe-card--result p {
+  margin-left: auto;
+  margin-right: auto;
+}
+.landing-root .unsubscribe-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.landing-root .unsubscribe-reasons {
+  display: grid;
+  gap: 10px;
+}
+.landing-root .unsubscribe-reason {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color .2s ease, background .2s ease;
+}
+.landing-root .unsubscribe-reason:has([data-state="checked"]) {
+  border-color: rgba(198, 255, 61, 0.55);
+  background: rgba(198, 255, 61, 0.08);
+}
+.landing-root .unsubscribe-reason__control {
+  margin-top: 3px;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.landing-root .unsubscribe-reason__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.landing-root .unsubscribe-reason__text span {
+  font-size: 15px;
+  font-weight: 800;
+}
+.landing-root .unsubscribe-reason__text small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+.landing-root .unsubscribe-other {
+  display: grid;
+  gap: 8px;
+}
+.landing-root .unsubscribe-other label {
+  color: var(--muted-2);
+}
+.landing-root .unsubscribe-textarea {
+  min-height: 112px;
+  border-color: var(--border);
+  background: #0f0f0f;
+  color: var(--text);
+  resize: vertical;
+}
+.landing-root .unsubscribe-textarea::placeholder {
+  color: var(--muted);
+}
+.landing-root .unsubscribe-submit {
+  align-self: flex-start;
+  min-width: 184px;
+}
+.landing-root .unsubscribe-error,
+.unsubscribe-dialog .unsubscribe-error {
+  margin: 0;
+  color: #ffd93d;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.unsubscribe-dialog {
+  width: calc(100vw - 32px);
+  max-width: 520px;
+  border: 1px solid #262626;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #1a1a1a, #141414);
+  color: #ffffff;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.62);
+}
+.unsubscribe-dialog .dialog-close {
+  color: #c7c7c7;
+}
+.unsubscribe-dialog .dialog-close:hover {
+  color: #c6ff3d;
+}
+.unsubscribe-dialog h2 {
+  color: #ffffff;
+  font-size: 24px;
+  line-height: 1.2;
+}
+.unsubscribe-dialog p {
+  color: #c7c7c7;
+  line-height: 1.55;
+}
+.unsubscribe-dialog__body {
+  display: grid;
+  gap: 16px;
+}
+.unsubscribe-dialog__summary {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid #262626;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.unsubscribe-dialog__summary span {
+  color: #9a9a9a;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.unsubscribe-dialog__summary strong {
+  color: #ffffff;
+  font-size: 15px;
+}
+.unsubscribe-consent {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  align-items: flex-start;
+  color: #ffffff;
+  line-height: 1.45;
+}
+.unsubscribe-consent button {
+  margin-top: 2px;
+  border-color: #c6ff3d;
+  color: #0a0a0a;
+}
+.unsubscribe-dialog__button {
+  min-width: 150px;
+}
+.unsubscribe-spinner {
+  animation: unsubscribe-spin 0.8s linear infinite;
+}
+@keyframes unsubscribe-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 640px) {
+  .landing-root .unsubscribe-page {
+    padding: 42px 0 64px;
+    align-items: flex-start;
+  }
+  .landing-root .unsubscribe-card {
+    padding: 30px 20px 24px;
+    border-radius: 22px;
+  }
+  .landing-root .unsubscribe-card h1 {
+    font-size: 31px;
+  }
+  .landing-root .unsubscribe-card__lead,
+  .landing-root .unsubscribe-card--result p {
+    font-size: 15px;
+  }
+  .landing-root .unsubscribe-submit,
+  .unsubscribe-dialog__button {
+    width: 100%;
+  }
+  .unsubscribe-dialog {
+    padding: 22px 18px;
+  }
+}
+
 /* ---------- Dashboard / Support ---------- */
 .landing-root .app-page {
   padding: 42px 0 80px;

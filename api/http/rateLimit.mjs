@@ -62,6 +62,13 @@ export const checkoutSessionLimiter = makeRateLimit({
   message: { error: "Слишком много попыток оплаты. Попробуйте позже." },
 });
 
+export const emailUnsubscribeIpLimiter = makeRateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  prefix: "v220:rl:emailunsubscribe:ip:",
+  message: { error: "Слишком много попыток отписки. Попробуйте позже." },
+});
+
 // Поллинг: сообщения 8 с, мета 20 с (до 3 req за цикл). До ~10 сессий на один IP (NAT).
 // Бюджет на сессию: ~113 + ~135 = ~248 req/15 мин + запас → 320; на IP: 3600 (≈320 × 10 + запас).
 export const talkmeIpLimiter = makeRateLimit({

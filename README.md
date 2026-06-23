@@ -33,6 +33,7 @@ docker compose up -d --build
 | `REMNAWAVE_TOKEN` | API-токен Remnawave (роль API) |
 | `RMW_API_URL` | Базовый URL сервиса RMW (без завершающего `/`) |
 | `RMW_API_KEY` | Ключ `X-Api-Key` для RMW |
+| `EMAIL_UNSUBSCRIBE_SECRET` | Секрет проверки ссылок `/unsubscribe-email?t=...`; должен совпадать с `EMAIL_UNSUBSCRIBE_SECRET` в RMW |
 | `NOTICE` | Опционально: текст важного объявления на `/support`; если задан, `GET {RMW_API_URL}/announcement` не вызывается |
 | `PUBLIC_SITE_URL` | HTTPS origin сайта для редиректов после оплаты (пути `/pay/success` и `/pay/fail`) |
 | `BILLING_SUCCESS_URL` | Опционально: явный URL успеха (https), вместе с `BILLING_CANCEL_URL` |
@@ -105,6 +106,37 @@ BFF в RMW шлёт: `user_ref`, `tariff_key`, `payment_method` (int), `return_u
 Ответ RMW пробрасывается клиенту; фронт ожидает поле `payment_url` для редиректа.
 
 Цены и маппинг продуктов на тарифы задаются в **RMW**, а не в этом репозитории.
+
+---
+
+## Отписка от email-рассылки
+
+Письма должны использовать ссылку из `payload.unsubscribe_url`, которую RMW добавляет к email-уведомлениям. Ссылка ведёт на основной сайт:
+
+`GET /unsubscribe-email?t=<signed-token>`
+
+Фронтенд показывает обязательный флоу подтверждения: выбор причины, модальное окно с чекбоксом и кнопка подтверждения. Причина нужна только как шаг подтверждения; BFF её валидирует, но не сохраняет и не отправляет в RMW.
+
+После подтверждения фронт вызывает:
+
+`POST /api/email/unsubscribe`
+
+```json
+{
+  "token": "v1.<payload>.<signature>",
+  "reason": "not_relevant",
+  "otherReason": "",
+  "consent": true
+}
+```
+
+BFF проверяет подпись токена через `EMAIL_UNSUBSCRIBE_SECRET`, достаёт `rw_uuid` и серверно вызывает RMW:
+
+`GET {RMW_API_URL}/v1/email/unsubscribe/{user_uuid}`
+
+Заголовки: `Content-Type: application/json`, `X-Api-Key: RMW_API_KEY`.
+
+Для деплоя проверьте, что в RMW `MAIN_SITE=https://220v.shop`, секрет `EMAIL_UNSUBSCRIBE_SECRET` совпадает с этим сервисом, а email-шаблон выводит `payload.unsubscribe_url`.
 
 ### Telegram-бот
 

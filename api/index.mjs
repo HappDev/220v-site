@@ -11,7 +11,7 @@ import { redis } from "./redis.mjs";
 import { clientError, serverError } from "./http/errors.mjs";
 import { fetchWithTimeout } from "./http/fetchWithTimeout.mjs";
 import { isTimeoutError, publicMessageFromErr, timeoutStatusCode } from "./http/userMessages.mjs";
-import { checkoutSessionLimiter, refClickIpLimiter } from "./http/rateLimit.mjs";
+import { checkoutSessionLimiter, emailUnsubscribeIpLimiter, refClickIpLimiter } from "./http/rateLimit.mjs";
 import { recordReferralEvent, queryReferralEvents } from "./referrals/events.mjs";
 import { buildReferralRiskForReferrer, buildReferralSummary } from "./referrals/summary.mjs";
 import {
@@ -37,6 +37,11 @@ import { createAuthRouter } from "./auth/routes.mjs";
 import { requireSession, getSession, requireAdminToken } from "./auth/session.mjs";
 import { getMailerConfigSummary, sendOtpEmail, verifyMailerConfig } from "./mailer.mjs";
 import { registerTalkMeRoutes } from "./talkme-routes.mjs";
+import {
+  UnsubscribeTokenConfigError,
+  UnsubscribeTokenError,
+  verifyUnsubscribeToken,
+} from "./email/unsubscribeToken.mjs";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -98,6 +103,15 @@ const referralExchangeRequestSchema = z.discriminatedUnion("type", [
 const REFERRAL_POINTS_PER_DAY = 10;
 const DEFAULT_EXCHANGE_APPROVE_COMMENT = "Обмен баллов пользователем";
 const DEFAULT_EXCHANGE_REJECT_COMMENT = "Отклонено оператором";
+const EMAIL_UNSUBSCRIBE_INVALID_LINK_MESSAGE = "Ссылка недействительна или устарела";
+const EMAIL_UNSUBSCRIBE_UNAVAILABLE_MESSAGE = "Сервис отписки временно недоступен";
+const EMAIL_UNSUBSCRIBE_REASONS = new Set([
+  "too_many_emails",
+  "not_relevant",
+  "no_longer_use",
+  "using_other_service",
+  "other",
+]);
 const REFERRAL_PRIZES = new Map([
   ["airpods-3", { title: "Apple AirPods 3", points: 18000 }],
   ["phone-card-1000", { title: "1000 руб на баланс телефона или карту", points: 1000 }],
@@ -165,6 +179,10 @@ function rmwBaseUrl() {
 
 function rmwApiKey() {
   return process.env.RMW_API_KEY?.trim() || "";
+}
+
+function emailUnsubscribeSecret() {
+  return process.env.EMAIL_UNSUBSCRIBE_SECRET?.trim() || "";
 }
 
 function paymentTypeToLabel(type) {
@@ -418,6 +436,61 @@ async function exchangeRmwReferralPointsForDays(userUuid, { points, days, force 
   }
 
   return data;
+}
+
+function readEmailUnsubscribeRequest(body) {
+  const token = typeof body?.token === "string" ? body.token.trim() : "";
+  if (!token) {
+    return { error: EMAIL_UNSUBSCRIBE_INVALID_LINK_MESSAGE };
+  }
+
+  const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+  if (!EMAIL_UNSUBSCRIBE_REASONS.has(reason)) {
+    return { error: "Укажите причину отписки" };
+  }
+
+  if (reason === "other") {
+    const otherReason = typeof body?.otherReason === "string" ? body.otherReason.trim() : "";
+    if (!otherReason || otherReason.length > 500) {
+      return { error: "Укажите причину отписки" };
+    }
+  }
+
+  if (body?.consent !== true) {
+    return { error: "Подтвердите отписку" };
+  }
+
+  return { token };
+}
+
+async function unsubscribeRmwEmail(userUuid) {
+  const uuid = assertValidUuid(userUuid);
+  const rmwUrl = rmwBaseUrl();
+  const rmwKey = rmwApiKey();
+  if (!rmwUrl || !rmwKey) {
+    const err = new Error("RMW not configured");
+    err.publicMessage = EMAIL_UNSUBSCRIBE_UNAVAILABLE_MESSAGE;
+    throw err;
+  }
+
+  const r = await fetchWithTimeout(`${rmwUrl}/v1/email/unsubscribe/${encodeURIComponent(uuid)}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Api-Key": rmwKey,
+    },
+  });
+
+  if (r.ok) return;
+
+  const err = new Error(`RMW email unsubscribe failed (${r.status})`);
+  if (r.status === 400 || r.status === 404) {
+    err.status = 400;
+    err.publicMessage = EMAIL_UNSUBSCRIBE_INVALID_LINK_MESSAGE;
+    throw err;
+  }
+  err.publicMessage = EMAIL_UNSUBSCRIBE_UNAVAILABLE_MESSAGE;
+  throw err;
 }
 
 function extractRmwTransactionId(data) {
@@ -1198,6 +1271,41 @@ app.get("/api/health", async (req, res) => {
   } catch (err) {
     req.log.warn({ err, redisStatus: redis.status }, "healthcheck redis ping failed");
     return res.status(503).json({ ok: false, redisStatus: redis.status });
+  }
+});
+
+app.post("/api/email/unsubscribe", emailUnsubscribeIpLimiter, async (req, res) => {
+  try {
+    const parsed = readEmailUnsubscribeRequest(req.body);
+    if (parsed.error) {
+      return clientError(res, 400, parsed.error);
+    }
+
+    let userUuid;
+    try {
+      userUuid = verifyUnsubscribeToken(parsed.token, emailUnsubscribeSecret());
+    } catch (err) {
+      if (err instanceof UnsubscribeTokenError) {
+        return clientError(res, 400, EMAIL_UNSUBSCRIBE_INVALID_LINK_MESSAGE);
+      }
+      if (err instanceof UnsubscribeTokenConfigError) {
+        err.publicMessage = EMAIL_UNSUBSCRIBE_UNAVAILABLE_MESSAGE;
+      }
+      throw err;
+    }
+
+    try {
+      await unsubscribeRmwEmail(userUuid);
+    } catch (err) {
+      if (err.status === 400) {
+        return clientError(res, 400, EMAIL_UNSUBSCRIBE_INVALID_LINK_MESSAGE);
+      }
+      throw err;
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    return serverError(res, req, err, EMAIL_UNSUBSCRIBE_UNAVAILABLE_MESSAGE);
   }
 });
 
