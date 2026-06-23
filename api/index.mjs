@@ -85,6 +85,9 @@ const checkoutSchema = z.object({
   product_key: z.enum(["sub_1m", "sub_6m", "sub_12m", "traffic_20gb", "traffic_50gb"]),
   payment_method: z.union([z.number().int(), z.string()]),
 });
+const applyPromoCodeSchema = z.object({
+  promo_code: z.string().trim().toUpperCase().regex(/^[A-Z0-9_-]{2,64}$/),
+});
 
 const referralExchangeRequestSchema = z.discriminatedUnion("type", [
   z.object({
@@ -1512,6 +1515,72 @@ app.get("/api/me/devices", requireSession, async (req, res) => {
     return res.json({ devices: deviceList, total: responseData.total ?? deviceList.length });
   } catch (err) {
     return serverError(res, req, err);
+  }
+});
+
+app.post("/api/me/promo-code/apply", requireSession, async (req, res) => {
+  try {
+    const parsed = applyPromoCodeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return clientError(res, 400, "Проверьте промокод и попробуйте ещё раз");
+    }
+
+    const userRef = assertValidUuid(req.session.userUuid);
+    const rmwUrl = rmwBaseUrl();
+    const rmwKey = rmwApiKey();
+    if (!rmwUrl || !rmwKey) {
+      return clientError(res, 500, "Активация промокода временно недоступна");
+    }
+
+    const r = await fetchWithTimeout(`${rmwUrl}/v1/billing/promo-code/apply`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": rmwKey,
+      },
+      body: JSON.stringify({
+        user_ref: userRef,
+        promo_code: parsed.data.promo_code,
+      }),
+    });
+
+    const text = await r.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      req.log.warn({ status: r.status }, "RMW promo apply returned invalid JSON");
+      return clientError(res, 502, "Активация промокода временно недоступна");
+    }
+
+    if (!r.ok) {
+      req.log.warn(
+        { status: r.status, body: typeof data === "object" ? data : null },
+        "RMW promo apply failed",
+      );
+      return clientError(
+        res,
+        r.status >= 500 ? 502 : r.status,
+        "Промокод недействителен, уже использован или временно недоступен",
+      );
+    }
+
+    const daysAdded = Number(data?.days_added);
+    return res.json({
+      ok: true,
+      promo_code: typeof data?.promo_code === "string" ? data.promo_code : parsed.data.promo_code,
+      days_added: Number.isFinite(daysAdded) ? daysAdded : 0,
+      new_expire_at: typeof data?.new_expire_at === "string" ? data.new_expire_at : null,
+    });
+  } catch (err) {
+    if (isTimeoutError(err)) {
+      return clientError(
+        res,
+        timeoutStatusCode(err),
+        publicMessageFromErr(err, "Активация промокода временно недоступна", { context: "промокод" }),
+      );
+    }
+    return serverError(res, req, err, "Активация промокода временно недоступна");
   }
 });
 

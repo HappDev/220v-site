@@ -26,7 +26,10 @@ import { apiDelete, apiGet, apiPost } from "@/lib/api";
 import { useSession } from "@/hooks/useSession";
 import {
   clearChatCompatCache,
+  consumePendingPromoCode,
   getVpnSubscriptionUrl,
+  normalizePromoCode,
+  peekPendingPromoCode,
   persistChatCompatCache,
   setVpnSubscriptionUrl,
   setVpnTalkmeProfileJson,
@@ -78,6 +81,19 @@ type BillingMeta = {
     traffic_limit_bytes: number | null;
     type: string | null;
   }[];
+};
+
+type ApplyPromoResponse = {
+  ok?: boolean;
+  promo_code?: string;
+  days_added?: number;
+  new_expire_at?: string;
+};
+
+type PromoResult = {
+  status: "success" | "error";
+  title: string;
+  message: string;
 };
 
 function toSafeString(value: unknown, fallback = ""): string {
@@ -192,10 +208,13 @@ const Dashboard = () => {
   const [trafficPaymentStep, setTrafficPaymentStep] = useState<{ gb: number; price: number } | null>(null);
   const [otherMenuOpen, setOtherMenuOpen] = useState(false);
   const [promoOpen, setPromoOpen] = useState(false);
+  const [promoApplying, setPromoApplying] = useState(false);
+  const [promoResult, setPromoResult] = useState<PromoResult | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [subscriptionQrOpen, setSubscriptionQrOpen] = useState(false);
   const copySubscriptionButtonRef = useRef<HTMLButtonElement>(null);
+  const autoPromoAttemptRef = useRef("");
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -341,10 +360,89 @@ const Dashboard = () => {
     }
   }, [userData?.userUuid]);
 
+  const refreshUserData = useCallback(async () => {
+    if (!email) return;
+    const { data, error: fnError } = await apiGet<{ user?: unknown; error?: string; exists?: boolean }>("/me");
+    if (fnError) throw fnError;
+    if (!data?.user) {
+      throw new Error(data?.error || "Не удалось получить данные");
+    }
+    const normalizedUser = normalizeUserData(data.user);
+    if (!normalizedUser) {
+      throw new Error("Некорректный формат данных пользователя");
+    }
+    if (normalizedUser.subscriptionUrl) {
+      setVpnSubscriptionUrl(normalizedUser.subscriptionUrl);
+    }
+    const talkmeJson = JSON.stringify({
+      usedTrafficBytes: normalizedUser.usedTrafficBytes,
+      trafficLimitBytes: normalizedUser.trafficLimitBytes,
+      expireAt: normalizedUser.expireAt,
+      currentDevices: normalizedUser.currentDevices,
+      devicesLimit: normalizedUser.devicesLimit,
+      tariff: normalizedUser.tariff,
+      plan: normalizedUser.plan,
+    });
+    setVpnTalkmeProfileJson(talkmeJson);
+    persistChatCompatCache({
+      email,
+      subscriptionUrl: normalizedUser.subscriptionUrl,
+      talkmeProfileJson: talkmeJson,
+    });
+    setUserData(normalizedUser);
+  }, [email]);
+
+  const applyPromoCode = useCallback(
+    async (rawCode: string) => {
+      const code = normalizePromoCode(rawCode);
+      if (!code) {
+        setPromoResult({
+          status: "error",
+          title: "Промокод не активирован",
+          message: "Проверьте промокод и попробуйте ещё раз.",
+        });
+        return;
+      }
+
+      setPromoApplying(true);
+      try {
+        const { data, error: fnError } = await apiPost<ApplyPromoResponse>("/me/promo-code/apply", {
+          promo_code: code,
+        });
+        if (fnError) throw fnError;
+        const daysAdded = Number(data?.days_added ?? 0);
+        setPromoCode("");
+        setPromoOpen(false);
+        setPromoResult({
+          status: "success",
+          title: "Промокод активирован",
+          message:
+            daysAdded > 0
+              ? `Промокод ${code} активирован. Добавлено ${daysAdded} ${pluralDays(daysAdded)}.`
+              : `Промокод ${code} активирован.`,
+        });
+        try {
+          await refreshUserData();
+        } catch (err) {
+          console.warn("refresh user after promo failed:", err);
+        }
+      } catch (err: unknown) {
+        setPromoResult({
+          status: "error",
+          title: "Промокод не активирован",
+          message: err instanceof Error ? err.message : "Не удалось активировать промокод",
+        });
+      } finally {
+        setPromoApplying(false);
+      }
+    },
+    [refreshUserData],
+  );
+
   useEffect(() => {
     if (loading || error || !userData) return;
     const sp = new URLSearchParams(location.search);
-    if (!sp.toString()) return;
+    if (!sp.toString() && !peekPendingPromoCode()) return;
 
     const stripAnd = (fn: () => void) => {
       fn();
@@ -390,11 +488,31 @@ const Dashboard = () => {
       stripAnd(() => setPromoOpen(true));
       return;
     }
+    const promoParam = sp.get("promo");
+    const promoCodeFromUrl = promoParam ? normalizePromoCode(promoParam) : "";
+    const promoCodeToApply = promoParam ? promoCodeFromUrl : peekPendingPromoCode();
+    if (promoParam || promoCodeToApply) {
+      stripAnd(() => {
+        if (!promoCodeToApply) {
+          setPromoResult({
+            status: "error",
+            title: "Промокод не активирован",
+            message: "Проверьте промокод и попробуйте ещё раз.",
+          });
+          return;
+        }
+        if (autoPromoAttemptRef.current === promoCodeToApply) return;
+        autoPromoAttemptRef.current = promoCodeToApply;
+        consumePendingPromoCode();
+        void applyPromoCode(promoCodeToApply);
+      });
+      return;
+    }
     if (sp.get("about") === "1") {
       stripAnd(() => setAboutOpen(true));
       return;
     }
-  }, [loading, error, userData, location.search, clearDashboardSearch, fetchDevices, navigate]);
+  }, [loading, error, userData, location.search, clearDashboardSearch, fetchDevices, navigate, applyPromoCode]);
 
   const handleOpenDevices = () => {
     const count = userData?.currentDevices ?? 0;
@@ -1221,9 +1339,32 @@ const Dashboard = () => {
             <button
               type="button"
               className="dash-modal-btn dash-modal-btn--primary"
-              onClick={() => toast.info("Промокод можно активировать в Telegram-боте")}
+              disabled={promoApplying}
+              onClick={() => void applyPromoCode(promoCode)}
             >
-              Активировать
+              {promoApplying ? "Активируем..." : "Активировать"}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(promoResult)} onOpenChange={(open) => !open && setPromoResult(null)}>
+        <DialogContent className="dash-modal sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{promoResult?.title ?? "Промокод"}</DialogTitle>
+            <DialogDescription>{promoResult?.message ?? ""}</DialogDescription>
+          </DialogHeader>
+          <div className="dash-modal__stack">
+            <button
+              type="button"
+              className={
+                promoResult?.status === "success"
+                  ? "dash-modal-btn dash-modal-btn--primary"
+                  : "dash-modal-btn dash-modal-btn--ghost"
+              }
+              onClick={() => setPromoResult(null)}
+            >
+              Понятно
             </button>
           </div>
         </DialogContent>

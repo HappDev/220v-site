@@ -15,6 +15,7 @@ process.env.RMW_API_KEY = "test-key";
 const { app } = await import("../index.mjs");
 const { redis } = await import("../redis.mjs");
 const { hashCode } = await import("../auth/crypto.mjs");
+const { saveSession } = await import("../auth/session.mjs");
 const { otpCooldownKey, otpKey, refUserStatusKey } = await import("../auth/keys.mjs");
 const { acquireOtpCooldown, clearOtpAndCooldown, putOtp } = await import("../auth/otp.mjs");
 const { queryReferralEvents } = await import("../referrals/events.mjs");
@@ -36,11 +37,11 @@ async function withTestServer(fn) {
   }
 }
 
-async function requestJson(method, path, body) {
+async function requestJson(method, path, body, headers = {}) {
   return withTestServer(async (baseUrl) => {
     const res = await originalFetch(`${baseUrl}${path}`, {
       method,
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      headers: body === undefined ? headers : { "Content-Type": "application/json", ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await res.text();
@@ -55,6 +56,22 @@ async function requestJson(method, path, body) {
       body: parsedBody,
       headers: res.headers,
     };
+  });
+}
+
+async function requestJsonWithSession(method, path, body, sessionData = {}) {
+  const sid = `sid-${Math.random().toString(16).slice(2)}`;
+  const csrf = `csrf-${Math.random().toString(16).slice(2)}`;
+  await saveSession(sid, {
+    userUuid: "b6810e6c-8a69-42b1-b298-8b07d8378987",
+    email: "promo-user@example.com",
+    csrf,
+    expAt: Date.now() + 600_000,
+    ...sessionData,
+  });
+  return requestJson(method, path, body, {
+    Cookie: `v220_sid=${sid}; v220_csrf=${csrf}`,
+    "X-CSRF-Token": csrf,
   });
 }
 
@@ -216,5 +233,65 @@ describe("auth integration", () => {
   it("DELETE /api/me/devices/x without session returns 401", async () => {
     const res = await requestJson("DELETE", "/api/me/devices/hwid-1");
     assert.equal(res.status, 401);
+  });
+
+  it("POST /api/me/promo-code/apply without session returns 401", async () => {
+    const res = await requestJson("POST", "/api/me/promo-code/apply", { promo_code: "FREE7DAYS" });
+    assert.equal(res.status, 401);
+  });
+
+  it("POST /api/me/promo-code/apply rejects invalid promo code", async () => {
+    const res = await requestJsonWithSession("POST", "/api/me/promo-code/apply", { promo_code: "bad code!" });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /Проверьте промокод/);
+  });
+
+  it("POST /api/me/promo-code/apply proxies the session user UUID to RMW", async () => {
+    const userUuid = "b6810e6c-8a69-42b1-b298-8b07d8378987";
+    globalThis.fetch = async (url, options = {}) => {
+      const href = String(url);
+      if (href.endsWith("/v1/billing/promo-code/apply")) {
+        assert.equal(options.headers["X-Api-Key"], "test-key");
+        assert.deepEqual(JSON.parse(options.body), {
+          user_ref: userUuid,
+          promo_code: "FREE7DAYS",
+        });
+        return Response.json({
+          ok: true,
+          user_id: 123,
+          promo_code: "FREE7DAYS",
+          days_added: 7,
+          prev_expire_at: "2026-06-23T00:00:00Z",
+          new_expire_at: "2026-06-30T00:00:00Z",
+        });
+      }
+      throw new Error(`Unexpected fetch: ${href}`);
+    };
+
+    const res = await requestJsonWithSession("POST", "/api/me/promo-code/apply", {
+      promo_code: "free7days",
+    }, { userUuid });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.promo_code, "FREE7DAYS");
+    assert.equal(res.body.days_added, 7);
+  });
+
+  it("POST /api/me/promo-code/apply hides RMW failure details", async () => {
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      if (href.endsWith("/v1/billing/promo-code/apply")) {
+        return Response.json({ error: "promo code already used by this user" }, { status: 500 });
+      }
+      throw new Error(`Unexpected fetch: ${href}`);
+    };
+
+    const res = await requestJsonWithSession("POST", "/api/me/promo-code/apply", {
+      promo_code: "FREE7DAYS",
+    });
+
+    assert.equal(res.status, 502);
+    assert.equal(res.body.error, "Промокод недействителен, уже использован или временно недоступен");
   });
 });

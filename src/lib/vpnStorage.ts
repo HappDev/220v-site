@@ -9,19 +9,33 @@ const KEYS = {
 /** Ключ sessionStorage для отложенного редиректа после логина из RequireVpnAuth. */
 const PENDING_REDIRECT_KEY = "vpn_pending_redirect";
 const PENDING_REF_UUID_KEY = "vpn_pending_ref_uuid";
+const PENDING_PROMO_CODE_KEY = "vpn_pending_promo_code";
 const PENDING_REDIRECT_MAX_LEN = 1024;
 const PENDING_REF_UUID_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const PENDING_PROMO_CODE_TTL_MS = 24 * 60 * 60 * 1000;
 
 type PendingRefUuidRecord = {
   uuid: string;
   ts: number;
 };
 
+type PendingPromoCodeRecord = {
+  code: string;
+  ts: number;
+};
+
 const REF_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PROMO_CODE_RE = /^[A-Z0-9_-]{2,64}$/;
 
 function isValidRefUuid(value: string): boolean {
   return REF_UUID_RE.test(value.trim());
+}
+
+export function normalizePromoCode(value: string): string {
+  const normalized = typeof value === "string" ? value.trim().toUpperCase() : "";
+  if (!PROMO_CODE_RE.test(normalized)) return "";
+  return normalized;
 }
 
 function readPendingRefUuidRecord(): PendingRefUuidRecord | null {
@@ -196,4 +210,55 @@ export function consumePendingRefUuid(): string {
 
 export function peekPendingRefUuid(): string {
   return readPendingRefUuidRecord()?.uuid ?? "";
+}
+
+function readPendingPromoCodeRecord(): PendingPromoCodeRecord | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_PROMO_CODE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<PendingPromoCodeRecord> | null;
+    const code = normalizePromoCode(typeof parsed?.code === "string" ? parsed.code : "");
+    const ts = typeof parsed?.ts === "number" ? parsed.ts : 0;
+    if (!code || !Number.isFinite(ts)) {
+      sessionStorage.removeItem(PENDING_PROMO_CODE_KEY);
+      return null;
+    }
+    if (Date.now() - ts > PENDING_PROMO_CODE_TTL_MS) {
+      sessionStorage.removeItem(PENDING_PROMO_CODE_KEY);
+      return null;
+    }
+    return { code, ts };
+  } catch {
+    try {
+      sessionStorage.removeItem(PENDING_PROMO_CODE_KEY);
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+}
+
+export function setPendingPromoCode(code: string): void {
+  const normalized = normalizePromoCode(code);
+  if (!normalized) return;
+  try {
+    sessionStorage.setItem(PENDING_PROMO_CODE_KEY, JSON.stringify({ code: normalized, ts: Date.now() }));
+  } catch {
+    // ignore
+  }
+}
+
+export function peekPendingPromoCode(): string {
+  return readPendingPromoCodeRecord()?.code ?? "";
+}
+
+export function consumePendingPromoCode(): string {
+  try {
+    const record = readPendingPromoCodeRecord();
+    sessionStorage.removeItem(PENDING_PROMO_CODE_KEY);
+    return record?.code ?? "";
+  } catch {
+    return "";
+  }
 }

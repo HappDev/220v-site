@@ -13,6 +13,9 @@ import {
   consumePendingRefUuid,
   peekPendingRefUuid,
   setVpnPendingRedirect,
+  consumePendingPromoCode,
+  normalizePromoCode,
+  setPendingPromoCode,
 } from "@/lib/vpnStorage";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 
@@ -42,6 +45,11 @@ function hrefAfterLoginFromPendingSearch(): string {
   //    открыть защищённую страницу без авторизации).
   const pending = consumeVpnPendingRedirect();
   if (pending) return pending;
+
+  const pendingPromoCode = consumePendingPromoCode();
+  if (pendingPromoCode) {
+    return `/dashboard?promo=${encodeURIComponent(pendingPromoCode)}`;
+  }
 
   // 2) Легаси: deep link на dashboard с query-параметрами.
   try {
@@ -117,6 +125,7 @@ const Index = () => {
 
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
+    let changed = false;
     const ref = sp.get("ref");
     if (ref) {
       setPendingRefUuid(ref);
@@ -127,6 +136,18 @@ const Index = () => {
       });
 
       sp.delete("ref");
+      changed = true;
+    }
+
+    const promo = sp.get("promo");
+    const promoCode = promo && promo !== "1" ? normalizePromoCode(promo) : "";
+    if (promoCode) {
+      setPendingPromoCode(promoCode);
+      sp.delete("promo");
+      changed = true;
+    }
+
+    if (changed) {
       const nextSearch = sp.toString();
       navigate(
         { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" },
