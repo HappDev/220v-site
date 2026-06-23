@@ -21,6 +21,7 @@ COPY --chown=node:node api/mailer.mjs ./mailer.mjs
 COPY --chown=node:node api/talkme-routes.mjs ./talkme-routes.mjs
 COPY --chown=node:node api/http ./http
 COPY --chown=node:node api/auth ./auth
+COPY --chown=node:node api/email ./email
 COPY --chown=node:node api/referrals ./referrals
 USER node
 EXPOSE 3001
