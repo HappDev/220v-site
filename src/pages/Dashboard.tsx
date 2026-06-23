@@ -21,6 +21,8 @@ import {
   BookOpen,
   LifeBuoy,
   MoreHorizontal,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
 import { useSession } from "@/hooks/useSession";
@@ -1352,16 +1354,28 @@ const Dashboard = () => {
         <DialogContent className="dash-modal sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{promoResult?.title ?? "Промокод"}</DialogTitle>
-            <DialogDescription>{promoResult?.message ?? ""}</DialogDescription>
+            <DialogDescription className="sr-only">{promoResult?.message ?? ""}</DialogDescription>
           </DialogHeader>
-          <div className="dash-modal__stack">
+          <div
+            className={
+              promoResult?.status === "success"
+                ? "dash-modal__result dash-modal__result--success"
+                : "dash-modal__result dash-modal__result--error"
+            }
+          >
+            <div className="dash-modal__result-icon" aria-hidden="true">
+              {promoResult?.status === "success" ? (
+                <CheckCircle2 className="h-5 w-5" />
+              ) : (
+                <AlertTriangle className="h-5 w-5" />
+              )}
+            </div>
+            <p className="dash-modal__result-text">{promoResult?.message ?? ""}</p>
+          </div>
+          <div className="dash-modal__stack dash-modal__actions">
             <button
               type="button"
-              className={
-                promoResult?.status === "success"
-                  ? "dash-modal-btn dash-modal-btn--primary"
-                  : "dash-modal-btn dash-modal-btn--ghost"
-              }
+              className="dash-modal-btn dash-modal-btn--primary"
               onClick={() => setPromoResult(null)}
             >
               Понятно

@@ -3774,6 +3774,57 @@ body.landing-no-scroll { overflow: hidden; }
   margin-top: 4px;
 }
 
+.dash-modal .dash-modal__actions {
+  margin-top: 14px;
+}
+
+.dash-modal .dash-modal__result {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 2px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--dm-border);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.dash-modal .dash-modal__result--success {
+  border-color: rgba(198, 255, 61, 0.28);
+  background: rgba(198, 255, 61, 0.08);
+}
+
+.dash-modal .dash-modal__result--error {
+  border-color: rgba(255, 107, 107, 0.35);
+  background: rgba(255, 107, 107, 0.08);
+}
+
+.dash-modal .dash-modal__result-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  color: var(--dm-accent);
+  background: rgba(198, 255, 61, 0.12);
+}
+
+.dash-modal .dash-modal__result--error .dash-modal__result-icon {
+  color: #ff9a9a;
+  background: rgba(255, 107, 107, 0.12);
+}
+
+.dash-modal .dash-modal__result-text {
+  margin: 0;
+  padding-top: 1px;
+  color: var(--dm-text);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
 /* Device list row (Devices modal) */
 .dash-modal .dash-modal__item {
   display: flex;
