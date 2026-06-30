@@ -411,7 +411,7 @@ const Instructions = () => {
       <div className="flex flex-col gap-3">
         <Step n={1}>
           Установи{" "}
-          <ExternalLink href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973">Happ</ExternalLink> из App Store.
+          <ExternalLink href="https://apps.apple.com/ru/app/happ-proxy-utility/id6783623643">Happ</ExternalLink> из App Store.
         </Step>
         <Step n={2}>
           Нажми <CopySubscriptionLink subscriptionUrl={subscriptionUrl} /> или отсканируй{" "}
@@ -527,7 +527,7 @@ const Instructions = () => {
     <div className="flex flex-col gap-3">
       <Step n={1}>
         Установи{" "}
-        <ExternalLink href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973">Happ</ExternalLink> из App Store.
+        <ExternalLink href="https://apps.apple.com/ru/app/happ-proxy-utility/id6783623643">Happ</ExternalLink> из App Store.
       </Step>
       <Step n={2}>
         Нажми кнопку
