@@ -909,7 +909,7 @@ function RiskWarningSpoilers({
         const warnings = grouped[severity];
         if (warnings.length === 0) return null;
         return (
-          <details key={severity} className="group/spoiler rounded-lg ring-1 ring-border" open={severity === "critical"}>
+          <details key={severity} className="group/spoiler rounded-lg ring-1 ring-border">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg p-3 text-sm hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
               <ChevronRight
                 className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open/spoiler:rotate-90"
