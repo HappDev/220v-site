@@ -53,13 +53,37 @@ type ReferralEvent = {
   tariffKey?: string;
 };
 
+type HashMatchSignals = {
+  ua: boolean;
+  fp: boolean;
+  ip: boolean;
+};
+
+type HashMatchEntry = {
+  otherUserUuidPrefix?: string;
+  referredUuidPrefix?: string;
+  referredUuidPrefixA?: string;
+  referredUuidPrefixB?: string;
+  signals?: HashMatchSignals;
+  uaHash?: string;
+  fingerprintHash?: string;
+  ipHash?: string;
+};
+
 type ReferralWarning = {
   code: string;
   label: string;
   severity: RiskLevel;
-  evidence: Record<string, unknown>;
+  evidence: Record<string, unknown> & { matches?: HashMatchEntry[] };
   description?: string;
 };
+
+const DYNAMIC_MATCH_CODES = new Set([
+  "other_account_click_before_registration",
+  "duplicate_registration_signals",
+]);
+
+const SPOILER_SEVERITIES: Array<"critical" | "high" | "medium"> = ["critical", "high", "medium"];
 
 type ReferralUserStatus = {
   penalized: boolean;
@@ -94,6 +118,7 @@ type ReferrerRisk = {
   lastSeen?: string | null;
   events: ReferralEvent[];
   status?: ReferralUserStatus;
+  warningsBySeverity?: Record<"critical" | "high" | "medium", ReferralWarning[]>;
 };
 
 type ReferrerUserLookup = {
@@ -396,17 +421,14 @@ function riskDotClass(level: RiskLevel) {
   return "border-muted-foreground bg-muted";
 }
 
-function riskLevelForScore(score: number): RiskLevel {
-  if (score >= 90) return "critical";
-  if (score >= 55) return "high";
-  if (score >= 30) return "medium";
-  if (score > 0) return "low";
-  return "none";
-}
-
 function shortenUuid(value: string) {
   if (value.length <= 20) return value;
   return `${value.slice(0, 9)}...${value.slice(-8)}`;
+}
+
+function shortenHash(value?: string | null, length = 8) {
+  if (!value) return "—";
+  return value.length <= length ? value : value.slice(0, length);
 }
 
 async function copyToClipboard(value: string, label: string) {
@@ -463,9 +485,9 @@ function RiskBadge({ level }: { level: RiskLevel }) {
   return <Badge className={cn("border", riskClass(level))}>{RISK_LABELS[level] || level}</Badge>;
 }
 
-function ScoreBadge({ score }: { score: number }) {
+function ScoreBadge({ score, level }: { score: number; level: RiskLevel }) {
   return (
-    <Badge className={cn("min-w-10 justify-center border font-bold", riskClass(riskLevelForScore(score)))}>
+    <Badge className={cn("min-w-10 justify-center border font-bold", riskClass(level))}>
       {score}
     </Badge>
   );
@@ -500,6 +522,23 @@ function CopyableText({
     >
       {displayValue}
     </button>
+  );
+}
+
+function HashText({
+  value,
+  label,
+  length = 8,
+  className,
+}: {
+  value?: string | null;
+  label: string;
+  length?: number;
+  className?: string;
+}) {
+  if (!value) return <span className={cn("text-muted-foreground", className)}>—</span>;
+  return (
+    <CopyableText value={value} label={label} displayValue={shortenHash(value, length)} className={className} />
   );
 }
 
@@ -571,8 +610,10 @@ function EventCard({ event }: { event: ReferralEvent }) {
         referrer: {event.referrerUuid || "—"} · user: {event.referredUuidPrefix || "—"} · email hash:{" "}
         {event.referredEmailHash || "—"}
       </p>
-      <p className="mt-1 break-all text-xs text-muted-foreground">
-        ip: {event.ipHash || "—"} · ua: {event.uaHash || "—"} · fp: {event.fingerprintHash || "—"}
+      <p className="mt-1 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
+        ip: <HashText value={event.ipHash} label="IP hash" /> · ua:{" "}
+        <HashText value={event.uaHash} label="UA hash" /> · fp:{" "}
+        <HashText value={event.fingerprintHash} label="FP hash" />
       </p>
       {(event.reason || event.tariffKey || event.selfReferral) && (
         <p className="mt-1 text-xs text-muted-foreground">
@@ -606,7 +647,7 @@ function WarningList({ warnings }: { warnings: ReferralWarning[] }) {
     <TooltipProvider delayDuration={150}>
       <div className="flex flex-nowrap items-center gap-1.5">
         {warnings.map((warning) => (
-          <Tooltip key={warning.code}>
+          <Tooltip key={`${warning.code}-${warning.severity}`}>
             <TooltipTrigger asChild>
               <span
                 aria-label={warning.label}
@@ -622,6 +663,148 @@ function WarningList({ warnings }: { warnings: ReferralWarning[] }) {
         ))}
       </div>
     </TooltipProvider>
+  );
+}
+
+function MatchSignalChips({ signals }: { signals?: HashMatchSignals }) {
+  if (!signals) return null;
+  const entries: Array<[keyof HashMatchSignals, string]> = [
+    ["ua", "UA"],
+    ["fp", "FP"],
+    ["ip", "IP"],
+  ];
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      {entries.map(([key, label]) => (
+        <span
+          key={key}
+          className={cn(
+            "inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase",
+            signals[key]
+              ? "bg-red-100 text-red-800 ring-1 ring-red-300"
+              : "bg-muted text-muted-foreground line-through opacity-60",
+          )}
+        >
+          {label}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function HashMatchDetails({ matches }: { matches?: HashMatchEntry[] }) {
+  if (!matches || matches.length === 0) return null;
+  return (
+    <div className="mt-2 space-y-2">
+      {matches.map((match, index) => {
+        const left = match.otherUserUuidPrefix ?? match.referredUuidPrefixA ?? "—";
+        const right = match.referredUuidPrefix ?? match.referredUuidPrefixB ?? "—";
+        const leftLabel = match.otherUserUuidPrefix ? "Аккаунт" : "Реферал A";
+        const rightLabel = match.otherUserUuidPrefix ? "Реферал" : "Реферал B";
+        return (
+          <div
+            key={`${left}-${right}-${index}`}
+            className="rounded-md bg-muted/60 p-2 text-xs text-muted-foreground"
+          >
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>
+                {leftLabel}: <span className="font-mono text-foreground">{left}</span>
+              </span>
+              <ChevronRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+              <span>
+                {rightLabel}: <span className="font-mono text-foreground">{right}</span>
+              </span>
+              <MatchSignalChips signals={match.signals} />
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+              {match.uaHash ? (
+                <span>
+                  ua: <HashText value={match.uaHash} label="UA hash" />
+                </span>
+              ) : null}
+              {match.fingerprintHash ? (
+                <span>
+                  fp: <HashText value={match.fingerprintHash} label="FP hash" />
+                </span>
+              ) : null}
+              {match.ipHash ? (
+                <span>
+                  ip: <HashText value={match.ipHash} label="IP hash" />
+                </span>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function WarningCard({ warning }: { warning: ReferralWarning }) {
+  const isDynamic = DYNAMIC_MATCH_CODES.has(warning.code);
+  return (
+    <div className="rounded-lg bg-background p-3 ring-1 ring-border">
+      <div className="flex flex-wrap items-center gap-2">
+        <RiskBadge level={warning.severity} />
+        <span className="font-semibold text-foreground">{warning.label}</span>
+        <span className="font-mono text-xs text-muted-foreground">{warning.code}</span>
+      </div>
+      {warning.description && <p className="mt-2 text-sm text-muted-foreground">{warning.description}</p>}
+      {isDynamic && warning.evidence?.matches ? (
+        <HashMatchDetails matches={warning.evidence.matches} />
+      ) : (
+        <pre className="mt-2 overflow-auto rounded bg-muted p-2 text-xs text-muted-foreground">
+          {JSON.stringify(warning.evidence, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function RiskWarningSpoilers({ item }: { item: ReferrerRisk }) {
+  const grouped =
+    item.warningsBySeverity ??
+    SPOILER_SEVERITIES.reduce(
+      (acc, severity) => {
+        acc[severity] = item.warnings.filter((warning) => warning.severity === severity);
+        return acc;
+      },
+      { critical: [], high: [], medium: [] } as Record<"critical" | "high" | "medium", ReferralWarning[]>,
+    );
+
+  const hasAny = SPOILER_SEVERITIES.some((severity) => grouped[severity].length > 0);
+  if (!hasAny) return null;
+
+  return (
+    <div className="mb-3 space-y-2">
+      {SPOILER_SEVERITIES.map((severity) => {
+        const warnings = grouped[severity];
+        if (warnings.length === 0) return null;
+        return (
+          <details key={severity} className="group/spoiler rounded-lg ring-1 ring-border" open={severity === "critical"}>
+            <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg p-3 text-sm hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
+              <ChevronRight
+                className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open/spoiler:rotate-90"
+                aria-hidden="true"
+              />
+              <span
+                className={cn("h-3 w-3 shrink-0 rounded-full border", riskDotClass(severity))}
+                aria-hidden="true"
+              />
+              <span className="font-semibold text-foreground">{RISK_LABELS[severity]}</span>
+              <span className="text-xs text-muted-foreground">
+                {warnings.length} {warnings.length === 1 ? "сигнал" : "сигналов"}
+              </span>
+            </summary>
+            <div className="space-y-2 border-t border-border p-3">
+              {warnings.map((warning) => (
+                <WarningCard key={`${warning.code}-${warning.severity}`} warning={warning} />
+              ))}
+            </div>
+          </details>
+        );
+      })}
+    </div>
   );
 }
 
@@ -968,16 +1151,23 @@ function ReferrerTable({
                       <span>Баллы</span>
                       <ColumnHeaderHint label="Score">
                         <p className="font-medium">Балл риска</p>
-                        <p>Сумма очков за все сработавшие сигналы. Чем больше балл, тем подозрительнее реферер. Очки за сигналы:</p>
+                        <p>
+                          Итоговый уровень (критичный/высокий/средний) определяется по совпадению технических
+                          отпечатков между событием и регистрацией:
+                        </p>
                         <ul className="ml-3 list-disc space-y-0.5">
-                          <li>регистрация после открытия ссылки из браузера/ПК другого аккаунта: +100</li>
-                          <li>общий IP-хэш у разных рефералов: +90</li>
-                          <li>общий fingerprint-хэш у разных рефералов: +90</li>
-                          <li>≥5 регистраций без единой оплаты: +70</li>
-                          <li>один IP-хэш часто при кодах/регистрациях: +55</li>
-                          <li>один fingerprint-хэш часто при кодах/регистрациях: +55</li>
-                          <li>≥2 пропущенных реферальных начисления: +35</li>
-                          <li>5+ действий с одного браузера/устройства и 0 оплат: +30</li>
+                          <li>критичный — совпали UA и FP</li>
+                          <li>высокий — совпал IP вместе с UA или FP</li>
+                          <li>средний — совпал только UA или только FP</li>
+                          <li>совпал только IP или ничего — не фиксируем</li>
+                        </ul>
+                        <p>Очки за сигналы:</p>
+                        <ul className="ml-3 list-disc space-y-0.5">
+                          <li>совпадение отпечатков: критичный +100 / высокий +65 / средний +40</li>
+                          <li>≥5 регистраций без единой оплаты: +70 (средний)</li>
+                          <li>один IP/fingerprint часто при кодах/регистрациях: +55 (средний)</li>
+                          <li>≥2 пропущенных реферальных начисления: +35 (средний)</li>
+                          <li>5+ действий с одного браузера/устройства и 0 оплат: +30 (средний)</li>
                         </ul>
                         <p className="opacity-75">Если сигналов нет, но события есть — базовый балл 5.</p>
                       </ColumnHeaderHint>
@@ -1055,7 +1245,7 @@ function ReferrerTable({
                             {balanceLookup?.loading ? "загрузка..." : balanceLookup?.balance ?? balanceLookup?.error ?? "—"}
                           </span>
                           <span>
-                            <ScoreBadge score={item.riskScore} />
+                            <ScoreBadge score={item.riskScore} level={item.riskLevel} />
                           </span>
                           <span className="whitespace-nowrap text-xs text-muted-foreground">
                             {item.counts.clicks}/{item.counts.codes}/{item.counts.verifies}/{item.counts.checkouts}
@@ -1120,25 +1310,7 @@ function ReferrerTable({
                               Списать баллы
                             </button>
                           </div>
-                          {item.warnings.length > 0 && (
-                            <div className="mb-3 space-y-2">
-                              {item.warnings.map((warning) => (
-                                <div key={warning.code} className="rounded-lg bg-background p-3 ring-1 ring-border">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <RiskBadge level={warning.severity} />
-                                    <span className="font-semibold text-foreground">{warning.label}</span>
-                                    <span className="font-mono text-xs text-muted-foreground">{warning.code}</span>
-                                  </div>
-                                  {warning.description && (
-                                    <p className="mt-2 text-sm text-muted-foreground">{warning.description}</p>
-                                  )}
-                                  <pre className="mt-2 overflow-auto rounded bg-muted p-2 text-xs text-muted-foreground">
-                                    {JSON.stringify(warning.evidence, null, 2)}
-                                  </pre>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          <RiskWarningSpoilers item={item} />
                           <div className="space-y-2">
                             {visibleEvents.length === 0 ? (
                               <p className="text-sm text-muted-foreground">Нет событий выбранного типа</p>

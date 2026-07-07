@@ -33,16 +33,6 @@ function increment(obj, key, amount = 1) {
   obj[key] = (obj[key] || 0) + amount;
 }
 
-function addToSet(map, key, value) {
-  if (!key || !value) return;
-  let set = map.get(key);
-  if (!set) {
-    set = new Set();
-    map.set(key, set);
-  }
-  set.add(value);
-}
-
 function addEventCount(map, key, event) {
   if (!key) return;
   const current = map.get(key) || { total: 0, authEvents: 0 };
@@ -74,16 +64,6 @@ function makeWarning(code, label, severity, evidence, description) {
   };
 }
 
-function maxRepeatedIdentity(identityMap) {
-  let top = null;
-  for (const [key, set] of identityMap.entries()) {
-    if (!top || set.size > top.identityCount) {
-      top = { key, identityCount: set.size };
-    }
-  }
-  return top;
-}
-
 function maxCount(hashMap, field = "total") {
   let top = null;
   for (const [key, counts] of hashMap.entries()) {
@@ -93,14 +73,33 @@ function maxCount(hashMap, field = "total") {
   return top;
 }
 
-function browserSignalsMatch(candidate, event) {
-  if (candidate.fingerprintHash && event.fingerprintHash && candidate.fingerprintHash === event.fingerprintHash) {
-    return "fingerprint";
-  }
-  if (candidate.ipHash && candidate.uaHash && candidate.ipHash === event.ipHash && candidate.uaHash === event.uaHash) {
-    return "ip_ua";
-  }
-  return "";
+// Points awarded to the two dynamic hash-match warnings, keyed by the severity
+// computed from which of UA/FP/IP signals coincided.
+const DYNAMIC_SEVERITY_POINTS = {
+  critical: 100,
+  high: 65,
+  medium: 40,
+};
+
+// Compare which of the three technical fingerprints coincide between two events.
+function matchedHashSignals(a, b) {
+  return {
+    ua: Boolean(a.uaHash && b.uaHash && a.uaHash === b.uaHash),
+    fp: Boolean(a.fingerprintHash && b.fingerprintHash && a.fingerprintHash === b.fingerprintHash),
+    ip: Boolean(a.ipHash && b.ipHash && a.ipHash === b.ipHash),
+  };
+}
+
+// Risk severity from coinciding signals:
+//   critical -> UA and FP matched (almost certainly the same device)
+//   high     -> IP matched together with UA or FP
+//   medium   -> only UA or only FP matched
+//   null     -> only IP matched, or nothing matched (not recorded)
+function severityFromSignals({ ua, fp, ip }) {
+  if (ua && fp) return "critical";
+  if ((ua && ip) || (fp && ip)) return "high";
+  if (ua || fp) return "medium";
+  return null;
 }
 
 function eventHappenedBeforeOrAt(candidate, event) {
@@ -109,31 +108,124 @@ function eventHappenedBeforeOrAt(candidate, event) {
   return Number.isFinite(candidateAt) && Number.isFinite(eventAt) && candidateAt <= eventAt;
 }
 
-function buildSameBrowserRegistrations(candidates, registrationEvents) {
-  const matchesByPrefix = new Map();
+// Scenario 1: a referral link opened from a *different* logged-in account
+// (ref_click with otherUserUuidPrefix), followed by a registration that shares
+// technical signals. One entry per (other account, registered user) pair.
+function buildOtherAccountMatches(candidates, registrationEvents) {
+  const byPair = new Map();
 
   for (const candidate of candidates) {
     for (const event of registrationEvents) {
       if (!eventHappenedBeforeOrAt(candidate, event)) continue;
-      const matchType = browserSignalsMatch(candidate, event);
-      if (!matchType) continue;
+      const signals = matchedHashSignals(candidate, event);
+      if (!severityFromSignals(signals)) continue;
 
-      const prefix = candidate.otherUserUuidPrefix;
-      const current = matchesByPrefix.get(prefix) || {
-        prefix,
-        matchTypes: new Set(),
-        referredUuidPrefixes: new Set(),
-        fingerprintHash: candidate.fingerprintHash || event.fingerprintHash || undefined,
-        ipHash: candidate.ipHash || event.ipHash || undefined,
-        uaHash: candidate.uaHash || event.uaHash || undefined,
+      const key = `${candidate.otherUserUuidPrefix}|${event.referredUuidPrefix || ""}`;
+      const current = byPair.get(key) || {
+        otherUserUuidPrefix: candidate.otherUserUuidPrefix,
+        referredUuidPrefix: event.referredUuidPrefix || "",
+        signals: { ua: false, fp: false, ip: false },
+        uaHash: undefined,
+        fingerprintHash: undefined,
+        ipHash: undefined,
       };
-      current.matchTypes.add(matchType);
-      if (event.referredUuidPrefix) current.referredUuidPrefixes.add(event.referredUuidPrefix);
-      matchesByPrefix.set(prefix, current);
+      if (signals.ua) {
+        current.signals.ua = true;
+        current.uaHash = candidate.uaHash || event.uaHash;
+      }
+      if (signals.fp) {
+        current.signals.fp = true;
+        current.fingerprintHash = candidate.fingerprintHash || event.fingerprintHash;
+      }
+      if (signals.ip) {
+        current.signals.ip = true;
+        current.ipHash = candidate.ipHash || event.ipHash;
+      }
+      byPair.set(key, current);
     }
   }
 
-  return [...matchesByPrefix.values()];
+  return [...byPair.values()].map((entry) => ({
+    ...entry,
+    severity: severityFromSignals(entry.signals),
+  }));
+}
+
+// Keep only the latest registration event per referred user so a registration is
+// never compared with itself and the pairwise cost stays bounded.
+function dedupeRegistrationsByIdentity(registrationEvents) {
+  const byIdentity = new Map();
+  for (const event of registrationEvents) {
+    const identity = event.referredUuidPrefix || "";
+    if (!identity) continue;
+    const existing = byIdentity.get(identity);
+    if (!existing || Date.parse(event.at || "") > Date.parse(existing.at || "")) {
+      byIdentity.set(identity, event);
+    }
+  }
+  return [...byIdentity.values()];
+}
+
+// Cap the pairwise comparison to avoid O(n^2) blow-ups on abnormally large
+// referrers. 500 unique identities => ~125k comparisons worst case.
+const DUPLICATE_REGISTRATION_COMPARE_LIMIT = 500;
+
+// Scenario 2: two *different* registrations of the same referrer that share
+// technical signals (typical self-farming with multiple accounts).
+function buildDuplicateRegistrationMatches(registrationEvents) {
+  const unique = dedupeRegistrationsByIdentity(registrationEvents)
+    .sort((a, b) => Date.parse(a.at || "") - Date.parse(b.at || ""))
+    .slice(0, DUPLICATE_REGISTRATION_COMPARE_LIMIT);
+
+  const byPair = new Map();
+  for (let i = 0; i < unique.length; i += 1) {
+    for (let j = i + 1; j < unique.length; j += 1) {
+      const a = unique[i];
+      const b = unique[j];
+      const signals = matchedHashSignals(a, b);
+      const severity = severityFromSignals(signals);
+      if (!severity) continue;
+
+      const prefixA = a.referredUuidPrefix || "";
+      const prefixB = b.referredUuidPrefix || "";
+      byPair.set(`${prefixA}|${prefixB}`, {
+        referredUuidPrefixA: prefixA,
+        referredUuidPrefixB: prefixB,
+        severity,
+        signals,
+        uaHash: signals.ua ? a.uaHash || b.uaHash : undefined,
+        fingerprintHash: signals.fp ? a.fingerprintHash || b.fingerprintHash : undefined,
+        ipHash: signals.ip ? a.ipHash || b.ipHash : undefined,
+      });
+    }
+  }
+  return [...byPair.values()];
+}
+
+function groupMatchesBySeverity(matches) {
+  const bySeverity = { critical: [], high: [], medium: [] };
+  for (const match of matches) {
+    if (bySeverity[match.severity]) bySeverity[match.severity].push(match);
+  }
+  return bySeverity;
+}
+
+function dynamicSeverityDescription(severity) {
+  if (severity === "critical") {
+    return "Совпали User-Agent и fingerprint — почти наверняка одно и то же устройство.";
+  }
+  if (severity === "high") {
+    return "Совпал IP вместе с User-Agent или fingerprint.";
+  }
+  return "Совпал User-Agent или fingerprint (без подтверждающего IP).";
+}
+
+function groupWarningsBySeverity(warnings) {
+  const result = { critical: [], high: [], medium: [] };
+  for (const warning of warnings) {
+    if (result[warning.severity]) result[warning.severity].push(warning);
+  }
+  return result;
 }
 
 function compactEvent(event) {
@@ -198,8 +290,6 @@ function scoreReferrer(group) {
   let riskLevel = "none";
   let score = 0;
   const counts = group.counts;
-  const ipIdentity = maxRepeatedIdentity(group.ipIdentities);
-  const fingerprintIdentity = maxRepeatedIdentity(group.fingerprintIdentities);
   const repeatedAuthIp = maxCount(group.ipCounts, "authEvents");
   const repeatedAuthFingerprint = maxCount(group.fingerprintCounts, "authEvents");
   const repeatedUa = maxCount(group.uaCounts, "total");
@@ -211,61 +301,69 @@ function scoreReferrer(group) {
     score += points;
   };
 
-  if (group.sameBrowserRegistrations.length > 0) {
+  // Scenario 1: link opened from another account, then a registration that
+  // shares technical signals. One warning per reached severity level so the UI
+  // can split them into the Critical/High/Medium spoilers.
+  const otherAccountBySeverity = groupMatchesBySeverity(group.otherAccountMatches);
+  for (const severity of ["critical", "high", "medium"]) {
+    const matches = otherAccountBySeverity[severity];
+    if (matches.length === 0) continue;
     addWarning(
       makeWarning(
-        "same_browser_other_account",
+        "other_account_click_before_registration",
         "Регистрация после открытия ссылки из браузера/ПК другого аккаунта",
-        "critical",
+        severity,
         {
-          accounts: group.sameBrowserRegistrations.length,
-          prefixes: group.sameBrowserRegistrations.map((item) => item.prefix).slice(0, 5),
-          registrations: group.sameBrowserRegistrations.reduce(
-            (sum, item) => sum + item.referredUuidPrefixes.size,
-            0,
-          ),
-          matches: group.sameBrowserRegistrations.map((item) => ({
-            prefix: item.prefix,
-            matchTypes: [...item.matchTypes],
-            referredUuidPrefixes: [...item.referredUuidPrefixes].slice(0, 5),
-            fingerprintHash: item.fingerprintHash,
-            ipHash: item.ipHash,
-            uaHash: item.uaHash,
+          matchLevel: severity,
+          accounts: new Set(matches.map((match) => match.otherUserUuidPrefix)).size,
+          registrations: matches.length,
+          matches: matches.slice(0, 20).map((match) => ({
+            otherUserUuidPrefix: match.otherUserUuidPrefix,
+            referredUuidPrefix: match.referredUuidPrefix,
+            signals: match.signals,
+            uaHash: match.uaHash,
+            fingerprintHash: match.fingerprintHash,
+            ipHash: match.ipHash,
           })),
         },
+        dynamicSeverityDescription(severity),
       ),
-      100,
+      DYNAMIC_SEVERITY_POINTS[severity],
     );
   }
 
-  if (ipIdentity && ipIdentity.identityCount > 1) {
-    addWarning(
-      makeWarning("shared_ip_identities", "Один IP hash связан с несколькими рефералами", "critical", {
-        ipHash: ipIdentity.key,
-        identities: ipIdentity.identityCount,
-      }),
-      90,
-    );
-  }
-
-  if (fingerprintIdentity && fingerprintIdentity.identityCount > 1) {
+  // Scenario 2: two different registrations of the same referrer sharing
+  // technical signals (multi-account self-farming).
+  const duplicateRegBySeverity = groupMatchesBySeverity(group.duplicateRegistrationMatches);
+  for (const severity of ["critical", "high", "medium"]) {
+    const matches = duplicateRegBySeverity[severity];
+    if (matches.length === 0) continue;
     addWarning(
       makeWarning(
-        "shared_fingerprint_identities",
-        "Один fingerprint hash связан с несколькими рефералами",
-        "critical",
+        "duplicate_registration_signals",
+        "Несколько регистраций с одинаковыми техническими отпечатками",
+        severity,
         {
-          fingerprintHash: fingerprintIdentity.key,
-          identities: fingerprintIdentity.identityCount,
+          matchLevel: severity,
+          pairs: matches.length,
+          matches: matches.slice(0, 20).map((match) => ({
+            referredUuidPrefixA: match.referredUuidPrefixA,
+            referredUuidPrefixB: match.referredUuidPrefixB,
+            signals: match.signals,
+            uaHash: match.uaHash,
+            fingerprintHash: match.fingerprintHash,
+            ipHash: match.ipHash,
+          })),
         },
+        dynamicSeverityDescription(severity),
       ),
-      90,
+      DYNAMIC_SEVERITY_POINTS[severity],
     );
   }
 
   if (counts.verifies >= 5 && counts.checkouts === 0) {
     addWarning(
-      makeWarning("verifies_without_checkout", "Много регистраций без оплат", "high", {
+      makeWarning("verifies_without_checkout", "Много регистраций без оплат", "medium", {
         verifies: counts.verifies,
         checkouts: counts.checkouts,
       }),
@@ -275,7 +373,7 @@ function scoreReferrer(group) {
 
   if (repeatedAuthIp && repeatedAuthIp.count >= 4) {
     addWarning(
-      makeWarning("repeated_auth_ip", "Один IP hash часто используется при кодах/регистрациях", "high", {
+      makeWarning("repeated_auth_ip", "Один IP hash часто используется при кодах/регистрациях", "medium", {
         ipHash: repeatedAuthIp.key,
         events: repeatedAuthIp.count,
       }),
@@ -288,7 +386,7 @@ function scoreReferrer(group) {
       makeWarning(
         "repeated_auth_fingerprint",
         "Один fingerprint hash часто используется при кодах/регистрациях",
-        "high",
+        "medium",
         {
           fingerprintHash: repeatedAuthFingerprint.key,
           events: repeatedAuthFingerprint.count,
@@ -406,8 +504,6 @@ export function buildReferralSummary(events, opts = {}) {
         ipCounts: new Map(),
         uaCounts: new Map(),
         fingerprintCounts: new Map(),
-        ipIdentities: new Map(),
-        fingerprintIdentities: new Map(),
         uniqueIps: new Set(),
         uniqueUserAgents: new Set(),
         uniqueFingerprints: new Set(),
@@ -415,7 +511,8 @@ export function buildReferralSummary(events, opts = {}) {
         uniqueReferredUsers: new Set(),
         browserAccountCandidates: [],
         registrationEvents: [],
-        sameBrowserRegistrations: [],
+        otherAccountMatches: [],
+        duplicateRegistrationMatches: [],
         events: [],
         lastSeen: null,
       };
@@ -448,10 +545,6 @@ export function buildReferralSummary(events, opts = {}) {
     addEventCount(group.uaCounts, event.uaHash, event);
     addEventCount(group.fingerprintCounts, event.fingerprintHash, event);
 
-    const identity = event.referredUuidPrefix || "";
-    addToSet(group.ipIdentities, event.ipHash, identity);
-    addToSet(group.fingerprintIdentities, event.fingerprintHash, identity);
-
     const compact = compactEvent(event);
     if (group.events.length < 25) group.events.push(compact);
     if (!group.lastSeen || Date.parse(event.at) > Date.parse(group.lastSeen)) {
@@ -460,13 +553,14 @@ export function buildReferralSummary(events, opts = {}) {
   }
 
   for (const group of groups.values()) {
-    group.sameBrowserRegistrations = buildSameBrowserRegistrations(
+    group.otherAccountMatches = buildOtherAccountMatches(
       group.browserAccountCandidates,
       group.registrationEvents,
     );
+    group.duplicateRegistrationMatches = buildDuplicateRegistrationMatches(group.registrationEvents);
   }
   totals.multiAccountDetections = [...groups.values()].reduce(
-    (sum, group) => sum + group.sameBrowserRegistrations.length,
+    (sum, group) => sum + group.otherAccountMatches.length,
     0,
   );
 
@@ -477,6 +571,7 @@ export function buildReferralSummary(events, opts = {}) {
       riskLevel: risk.riskLevel,
       riskScore: risk.score,
       warnings: risk.warnings,
+      warningsBySeverity: groupWarningsBySeverity(risk.warnings),
       counts: group.counts,
       unique: {
         ipHashes: group.uniqueIps.size,

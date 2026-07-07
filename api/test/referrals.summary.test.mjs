@@ -172,13 +172,13 @@ describe("referral admin summary", () => {
     const refA = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
     assert.ok(refA);
     assert.notEqual(refA.riskLevel, "critical");
-    assert.ok(!refA.warnings.some((warning) => warning.code === "same_browser_other_account"));
+    assert.ok(!refA.warnings.some((warning) => warning.code === "other_account_click_before_registration"));
 
     // A self-referral carries the user's own prefix and must not be treated as multi-account.
     const refB = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_B);
     assert.ok(refB);
     assert.notEqual(refB.riskLevel, "critical");
-    assert.ok(!refB.warnings.some((warning) => warning.code === "same_browser_other_account"));
+    assert.ok(!refB.warnings.some((warning) => warning.code === "other_account_click_before_registration"));
   });
 
   it("flags registration after opening a referral link from another account in the same browser as critical", async () => {
@@ -213,8 +213,9 @@ describe("referral admin summary", () => {
     const refA = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
     assert.ok(refA);
     assert.equal(refA.riskLevel, "critical");
-    const warning = refA.warnings.find((item) => item.code === "same_browser_other_account");
+    const warning = refA.warnings.find((item) => item.code === "other_account_click_before_registration");
     assert.ok(warning);
+    assert.equal(warning.severity, "critical");
     assert.equal(warning.evidence.accounts, 1);
     assert.equal(warning.evidence.registrations, 1);
   });
@@ -233,12 +234,12 @@ describe("referral admin summary", () => {
     assert.equal(res.body.referrers[0].riskLevel, "critical");
     assert.ok(
       res.body.referrers[0].warnings.some(
-        (warning) => warning.code === "shared_fingerprint_identities",
+        (warning) => warning.code === "duplicate_registration_signals" && warning.severity === "critical",
       ),
     );
   });
 
-  it("marks many verifies without checkout as high", async () => {
+  it("marks many verifies without checkout as medium", async () => {
     await seedEvents(
       Array.from({ length: 5 }, (_, index) =>
         event({
@@ -254,10 +255,12 @@ describe("referral admin summary", () => {
     const res = await getSummary("?days=all&limit=50");
 
     assert.equal(res.status, 200);
-    assert.equal(res.body.referrers[0].riskLevel, "high");
-    assert.ok(
-      res.body.referrers[0].warnings.some((warning) => warning.code === "verifies_without_checkout"),
+    assert.equal(res.body.referrers[0].riskLevel, "medium");
+    const warning = res.body.referrers[0].warnings.find(
+      (item) => item.code === "verifies_without_checkout",
     );
+    assert.ok(warning);
+    assert.equal(warning.severity, "medium");
   });
 
   it("explains repeated User-Agent activity without checkout", async () => {
@@ -388,10 +391,12 @@ describe("referral admin summary", () => {
     const atThreshold = await getSummary("?days=all&limit=50");
 
     assert.equal(atThreshold.status, 200);
-    assert.equal(atThreshold.body.referrers[0].riskLevel, "high");
-    assert.ok(
-      atThreshold.body.referrers[0].warnings.some((warning) => warning.code === "repeated_auth_ip"),
+    assert.equal(atThreshold.body.referrers[0].riskLevel, "medium");
+    const warning = atThreshold.body.referrers[0].warnings.find(
+      (item) => item.code === "repeated_auth_ip",
     );
+    assert.ok(warning);
+    assert.equal(warning.severity, "medium");
   });
 
   it("keeps normal paid referral activity low risk", async () => {
@@ -407,6 +412,89 @@ describe("referral admin summary", () => {
     assert.equal(res.status, 200);
     assert.equal(res.body.referrers[0].riskLevel, "low");
     assert.deepEqual(res.body.referrers[0].warnings, []);
+  });
+
+  it("marks two registrations sharing UA and FP as critical", async () => {
+    await seedEvents([
+      event({ type: "ref_verify_ok", referrerUuid: REF_A, uaHash: "ua-x", fingerprintHash: "fp-x", ipHash: "ip-1", referredUuidPrefix: "user-1" }),
+      event({ type: "ref_verify_ok", referrerUuid: REF_A, uaHash: "ua-x", fingerprintHash: "fp-x", ipHash: "ip-2", referredUuidPrefix: "user-2" }),
+    ]);
+
+    const res = await getSummary("?days=all&limit=50");
+
+    assert.equal(res.status, 200);
+    const refA = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
+    assert.equal(refA.riskLevel, "critical");
+    const warning = refA.warnings.find((item) => item.code === "duplicate_registration_signals");
+    assert.ok(warning);
+    assert.equal(warning.severity, "critical");
+    assert.deepEqual(warning.evidence.matches[0].signals, { ua: true, fp: true, ip: false });
+  });
+
+  it("marks two registrations sharing UA and IP as high", async () => {
+    await seedEvents([
+      event({ type: "ref_verify_ok", referrerUuid: REF_A, uaHash: "ua-x", fingerprintHash: "fp-1", ipHash: "ip-x", referredUuidPrefix: "user-1" }),
+      event({ type: "ref_verify_ok", referrerUuid: REF_A, uaHash: "ua-x", fingerprintHash: "fp-2", ipHash: "ip-x", referredUuidPrefix: "user-2" }),
+    ]);
+
+    const res = await getSummary("?days=all&limit=50");
+
+    assert.equal(res.status, 200);
+    const refA = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
+    assert.equal(refA.riskLevel, "high");
+    const warning = refA.warnings.find(
+      (item) => item.code === "duplicate_registration_signals" && item.severity === "high",
+    );
+    assert.ok(warning);
+    assert.deepEqual(warning.evidence.matches[0].signals, { ua: true, fp: false, ip: true });
+  });
+
+  it("marks two registrations sharing only UA as medium", async () => {
+    await seedEvents([
+      event({ type: "ref_verify_ok", referrerUuid: REF_A, uaHash: "ua-x", fingerprintHash: "fp-1", ipHash: "ip-1", referredUuidPrefix: "user-1" }),
+      event({ type: "ref_verify_ok", referrerUuid: REF_A, uaHash: "ua-x", fingerprintHash: "fp-2", ipHash: "ip-2", referredUuidPrefix: "user-2" }),
+    ]);
+
+    const res = await getSummary("?days=all&limit=50");
+
+    assert.equal(res.status, 200);
+    const refA = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
+    assert.equal(refA.riskLevel, "medium");
+    const warning = refA.warnings.find(
+      (item) => item.code === "duplicate_registration_signals" && item.severity === "medium",
+    );
+    assert.ok(warning);
+    assert.deepEqual(warning.evidence.matches[0].signals, { ua: true, fp: false, ip: false });
+  });
+
+  it("does not raise risk when only IP matches between registrations", async () => {
+    await seedEvents([
+      event({ type: "ref_verify_ok", referrerUuid: REF_A, uaHash: "ua-1", fingerprintHash: "fp-1", ipHash: "ip-x", referredUuidPrefix: "user-1" }),
+      event({ type: "ref_verify_ok", referrerUuid: REF_A, uaHash: "ua-2", fingerprintHash: "fp-2", ipHash: "ip-x", referredUuidPrefix: "user-2" }),
+    ]);
+
+    const res = await getSummary("?days=all&limit=50");
+
+    assert.equal(res.status, 200);
+    const refA = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
+    assert.equal(refA.riskLevel, "low");
+    assert.ok(!refA.warnings.some((item) => item.code === "duplicate_registration_signals"));
+  });
+
+  it("groups warnings by severity for the admin UI", async () => {
+    await seedEvents([
+      event({ type: "ref_verify_ok", referrerUuid: REF_A, uaHash: "ua-x", fingerprintHash: "fp-x", ipHash: "ip-1", referredUuidPrefix: "user-1" }),
+      event({ type: "ref_verify_ok", referrerUuid: REF_A, uaHash: "ua-x", fingerprintHash: "fp-x", ipHash: "ip-2", referredUuidPrefix: "user-2" }),
+    ]);
+
+    const res = await getSummary("?days=all&limit=50");
+
+    assert.equal(res.status, 200);
+    const refA = res.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
+    assert.ok(refA.warningsBySeverity);
+    assert.equal(refA.warningsBySeverity.critical.length, 1);
+    assert.ok(Array.isArray(refA.warningsBySeverity.high));
+    assert.ok(Array.isArray(refA.warningsBySeverity.medium));
   });
 
   it("validates period and caps limit without failing", async () => {
@@ -571,8 +659,10 @@ describe("referral admin summary", () => {
 
   it("blocks current user's referral exchange status for high risk", async () => {
     const agent = await createSessionAgent(REF_A);
-    for (let idx = 0; idx < 5; idx += 1) {
-      await recordReferralEvent("ref_verify_ok", fakeReferralReq(`127.0.0.${idx + 1}`), {
+    // Same IP (and therefore same User-Agent from the fake request) across two
+    // different registrations -> IP+UA match -> high risk -> exchange blocked.
+    for (let idx = 0; idx < 2; idx += 1) {
+      await recordReferralEvent("ref_verify_ok", fakeReferralReq("127.0.0.1"), {
         referrerUuid: REF_A,
         referredEmailHash: `email-${idx}`,
         referredUuidPrefix: `user-${idx}`,
@@ -584,6 +674,11 @@ describe("referral admin summary", () => {
     assert.equal(res.status, 200);
     assert.equal(res.body.riskLevel, "high");
     assert.equal(res.body.blocked, true);
+    assert.ok(
+      res.body.warnings.some(
+        (warning) => warning.code === "duplicate_registration_signals" && warning.severity === "high",
+      ),
+    );
   });
 
   it("creates referral exchange requests for days and prizes", async () => {
