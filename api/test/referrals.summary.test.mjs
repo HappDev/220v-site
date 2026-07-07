@@ -18,7 +18,7 @@ process.env.RMW_API_KEY = "test-key";
 const { app } = await import("../index.mjs");
 const { redis } = await import("../redis.mjs");
 const { saveSession } = await import("../auth/session.mjs");
-const { base64url } = await import("../auth/crypto.mjs");
+const { base64url, emailHash } = await import("../auth/crypto.mjs");
 const { SESSION_COOKIE, CSRF_COOKIE } = await import("../config.mjs");
 const { refEventsListKey, refExchangeRequestKey } = await import("../auth/keys.mjs");
 const { recordReferralEvent } = await import("../referrals/events.mjs");
@@ -557,6 +557,87 @@ describe("referral admin summary", () => {
     assert.equal(res.body.balance, 15);
     assert.equal(res.body.page, 2);
     assert.equal(res.body.items[0].reason, "registration");
+  });
+
+  it("attaches UA/FP/IP risk signals to registration items in points history", async () => {
+    // Seed through recordReferralEvent so the per-referrer Redis index used by
+    // queryReferralEvents({ referrerUuid }) is populated.
+    const reqWith = (ip, ua) => ({
+      ip,
+      path: "/api/test",
+      socket: { remoteAddress: ip },
+      get(name) {
+        return name === "User-Agent" ? ua : "";
+      },
+      log: { warn() {} },
+    });
+
+    // Two registrations from the same browser (UA+FP match => critical) and one
+    // clean registration with unique fingerprints.
+    await recordReferralEvent("ref_verify_ok", reqWith("1.1.1.1", "shared-ua"), {
+      referrerUuid: REF_A,
+      referredEmailHash: emailHash("user1@example.com"),
+      referredUuidPrefix: "user-1",
+      fingerprint: "shared-fp",
+    });
+    await recordReferralEvent("ref_verify_ok", reqWith("2.2.2.2", "shared-ua"), {
+      referrerUuid: REF_A,
+      referredEmailHash: emailHash("user2@example.com"),
+      referredUuidPrefix: "user-2",
+      fingerprint: "shared-fp",
+    });
+    await recordReferralEvent("ref_verify_ok", reqWith("3.3.3.3", "clean-ua"), {
+      referrerUuid: REF_A,
+      referredEmailHash: emailHash("clean@example.com"),
+      referredUuidPrefix: "user-3",
+      fingerprint: "clean-fp",
+    });
+
+    globalThis.fetch = async (url) => {
+      assert.match(String(url), /\/referral-points\?page=1&limit=20$/);
+      return new Response(
+        JSON.stringify({
+          balance: 3,
+          items: [
+            { id: 1, amount: 1, reason: "registration", referred_user_email: "User1@example.com", created_at: "2026-01-01T00:00:00.000Z" },
+            { id: 2, amount: 1, reason: "registration", referred_user_email: "clean@example.com", created_at: "2026-01-02T00:00:00.000Z" },
+            { id: 3, amount: 1, reason: "registration", referred_user_email: "expired@example.com", created_at: "2026-01-03T00:00:00.000Z" },
+            { id: 4, amount: 5, reason: "tariff_payment", referred_user_email: "user1@example.com", created_at: "2026-01-04T00:00:00.000Z" },
+          ],
+          page: 1,
+          limit: 20,
+          total: 4,
+          total_pages: 1,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    const res = await request(app)
+      .get(`/api/admin/referrals/users/${REF_A}/points?page=1&limit=20`)
+      .set("X-Admin-Token", "admin-test-token");
+
+    assert.equal(res.status, 200);
+
+    // Email matching must be case-insensitive.
+    const flagged = res.body.items.find((item) => item.id === 1);
+    assert.ok(flagged.risk);
+    assert.equal(flagged.risk.severity, "critical");
+    assert.deepEqual(flagged.risk.signals, { ua: true, fp: true, ip: false });
+    assert.equal(flagged.risk.duplicateRegistrations, 1);
+
+    const clean = res.body.items.find((item) => item.id === 2);
+    assert.ok(clean.risk);
+    assert.equal(clean.risk.severity, null);
+    assert.deepEqual(clean.risk.signals, { ua: false, fp: false, ip: false });
+
+    // No Redis events for this email (e.g. TTL expired) -> no risk field.
+    const expired = res.body.items.find((item) => item.id === 3);
+    assert.equal(expired.risk, undefined);
+
+    // Non-registration rows are left untouched.
+    const payment = res.body.items.find((item) => item.id === 4);
+    assert.equal(payment.risk, undefined);
   });
 
   it("debits referrer points through RMW by UUID and marks referral status", async () => {

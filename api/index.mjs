@@ -13,7 +13,11 @@ import { fetchWithTimeout } from "./http/fetchWithTimeout.mjs";
 import { isTimeoutError, publicMessageFromErr, timeoutStatusCode } from "./http/userMessages.mjs";
 import { checkoutSessionLimiter, emailUnsubscribeIpLimiter, refClickIpLimiter } from "./http/rateLimit.mjs";
 import { recordReferralEvent, queryReferralEvents } from "./referrals/events.mjs";
-import { buildReferralRiskForReferrer, buildReferralSummary } from "./referrals/summary.mjs";
+import {
+  buildReferralRiskForReferrer,
+  buildReferralSummary,
+  buildRegistrationRiskSignals,
+} from "./referrals/summary.mjs";
 import {
   closeReferralExchangeRequest,
   createReferralExchangeRequest,
@@ -32,7 +36,7 @@ import {
   markReferralUserPointsUnblocked,
 } from "./referrals/userStatus.mjs";
 import { SESSION_COOKIE } from "./config.mjs";
-import { base64url } from "./auth/crypto.mjs";
+import { base64url, emailHash } from "./auth/crypto.mjs";
 import { createAuthRouter } from "./auth/routes.mjs";
 import { requireSession, getSession, requireAdminToken } from "./auth/session.mjs";
 import { getMailerConfigSummary, sendOtpEmail, verifyMailerConfig } from "./mailer.mjs";
@@ -1215,6 +1219,28 @@ app.get("/api/admin/referrals/users/:uuid/points", requireAdminToken, async (req
     const limit =
       Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(100, limitRaw) : 20;
     const data = await fetchRmwReferralPoints(uuid, { page, limit });
+
+    // Attach UA/FP/IP risk signals from Redis referral events to registration
+    // rows so the admin history shows which registrations shared fingerprints.
+    try {
+      const registrationItems = Array.isArray(data?.items)
+        ? data.items.filter(
+            (item) => item?.reason === "registration" && typeof item?.referred_user_email === "string",
+          )
+        : [];
+      if (registrationItems.length > 0) {
+        const events = await queryReferralEvents({ referrerUuid: uuid, limit: 5000 });
+        const riskByEmailHash = buildRegistrationRiskSignals(events, uuid);
+        for (const item of registrationItems) {
+          const hash = emailHash(item.referred_user_email.trim().toLowerCase());
+          const risk = riskByEmailHash[hash];
+          if (risk) item.risk = risk;
+        }
+      }
+    } catch (err) {
+      req.log.warn({ err }, "referral history risk enrichment failed");
+    }
+
     return res.json(data);
   } catch (err) {
     if (err?.message === "Invalid user UUID") {

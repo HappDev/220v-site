@@ -134,11 +134,19 @@ type ReferrerBalanceLookup = {
   error?: string;
 };
 
+type RegistrationRiskSignals = {
+  signals: HashMatchSignals;
+  severity: RiskLevel | null;
+  duplicateRegistrations: number;
+  otherAccounts: number;
+};
+
 type ReferralPointItem = {
   id: number | string;
   amount: number;
   reason: string;
   referred_user_email?: string | null;
+  risk?: RegistrationRiskSignals | null;
   meta?: {
     tier?: string;
     tariff_key?: string;
@@ -689,6 +697,49 @@ function MatchSignalChips({ signals }: { signals?: HashMatchSignals }) {
         </span>
       ))}
     </span>
+  );
+}
+
+function RegistrationRiskCell({ item }: { item: ReferralPointItem }) {
+  if (item.reason !== "registration") {
+    return null;
+  }
+  const risk = item.risk;
+  if (!risk) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  const hasMatches = Boolean(risk.severity);
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex cursor-help items-center gap-1.5">
+          {hasMatches ? (
+            <span
+              aria-label={RISK_LABELS[risk.severity as RiskLevel]}
+              className={cn("h-3 w-3 shrink-0 rounded-full border", riskDotClass(risk.severity as RiskLevel))}
+            />
+          ) : null}
+          <MatchSignalChips signals={risk.signals} />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs space-y-1 text-left text-xs leading-snug">
+        {hasMatches ? (
+          <>
+            <p className="font-medium">
+              Совпадения технических отпечатков ({RISK_LABELS[risk.severity as RiskLevel].toLowerCase()})
+            </p>
+            {risk.duplicateRegistrations > 0 ? (
+              <p>Других регистраций с совпавшими отпечатками: {risk.duplicateRegistrations}</p>
+            ) : null}
+            {risk.otherAccounts > 0 ? (
+              <p>Ссылка открывалась из других аккаунтов с этими отпечатками: {risk.otherAccounts}</p>
+            ) : null}
+          </>
+        ) : (
+          <p>Совпадений UA/FP/IP с другими регистрациями этого реферера не найдено</p>
+        )}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -1366,39 +1417,57 @@ function ReferrerTable({
                 <Badge variant="secondary">Баланс: {historyData.balance ?? 0}</Badge>
                 <Badge variant="secondary">Всего записей: {historyData.total ?? historyData.items.length}</Badge>
               </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Дата</TableHead>
-                    <TableHead>Событие</TableHead>
-                    <TableHead>Реферал</TableHead>
-                    <TableHead>Баллы</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {historyData.items.map((item, index) => (
-                    <TableRow key={item.id || `${item.created_at}-${index}`}>
-                      <TableCell className="whitespace-nowrap text-xs">{formatDate(item.created_at)}</TableCell>
-                      <TableCell className="text-xs">{formatReferralPointReason(item)}</TableCell>
-                      <TableCell className="text-xs">
-                        {item.referred_user_email ? (
-                          <CopyableText value={item.referred_user_email} label="Email" className="max-w-[220px]" />
-                        ) : (
-                          "—"
-                        )}
-                      </TableCell>
-                      <TableCell
-                        className={cn(
-                          "text-xs font-bold",
-                          item.amount >= 0 ? "text-emerald-600" : "text-destructive",
-                        )}
-                      >
-                        {formatAmount(item.amount)}
-                      </TableCell>
+              <TooltipProvider delayDuration={150}>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Дата</TableHead>
+                      <TableHead>Событие</TableHead>
+                      <TableHead>Реферал</TableHead>
+                      <TableHead>
+                        <ColumnHeaderHint label="Сигналы">
+                          <p className="font-medium">Совпадения UA / FP / IP</p>
+                          <p>
+                            Красный квадрат — отпечаток регистрации (User-Agent, fingerprint или IP) совпал с другой
+                            регистрацией этого реферера либо с открытием ссылки из другого аккаунта. Чем больше
+                            красных квадратов, тем больше условий совпало.
+                          </p>
+                          <p className="opacity-75">
+                            «—» — по этой регистрации нет данных о событиях (истёк TTL в Redis).
+                          </p>
+                        </ColumnHeaderHint>
+                      </TableHead>
+                      <TableHead>Баллы</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {historyData.items.map((item, index) => (
+                      <TableRow key={item.id || `${item.created_at}-${index}`}>
+                        <TableCell className="whitespace-nowrap text-xs">{formatDate(item.created_at)}</TableCell>
+                        <TableCell className="text-xs">{formatReferralPointReason(item)}</TableCell>
+                        <TableCell className="text-xs">
+                          {item.referred_user_email ? (
+                            <CopyableText value={item.referred_user_email} label="Email" className="max-w-[220px]" />
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-xs">
+                          <RegistrationRiskCell item={item} />
+                        </TableCell>
+                        <TableCell
+                          className={cn(
+                            "text-xs font-bold",
+                            item.amount >= 0 ? "text-emerald-600" : "text-destructive",
+                          )}
+                        >
+                          {formatAmount(item.amount)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TooltipProvider>
             </div>
           )}
 

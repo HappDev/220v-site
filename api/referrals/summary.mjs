@@ -202,6 +202,85 @@ function buildDuplicateRegistrationMatches(registrationEvents) {
   return [...byPair.values()];
 }
 
+// Per-registration risk signals for the admin points history. For every unique
+// registration of the referrer, union the UA/FP/IP signals it shares with the
+// referrer's other registrations and with clicks made from other logged-in
+// accounts. Keyed by referredEmailHash so the RMW points history (which only
+// exposes the referred user's email) can be matched against Redis events.
+export function buildRegistrationRiskSignals(events, referrerUuid) {
+  const uuid = typeof referrerUuid === "string" ? referrerUuid.trim() : "";
+  const registrationEvents = [];
+  const candidates = [];
+
+  for (const event of events) {
+    if (!event || typeof event !== "object") continue;
+    if ((typeof event.referrerUuid === "string" ? event.referrerUuid.trim() : "") !== uuid) continue;
+    const isSelfReferral = Boolean(event.selfReferral) || event.type === "ref_self_referral";
+    if (
+      event.otherUserUuidPrefix &&
+      !isSelfReferral &&
+      event.otherUserUuidPrefix !== uuid.slice(0, 8)
+    ) {
+      candidates.push(event);
+    }
+    if (REGISTRATION_EVENT_TYPES.has(event.type) && !isSelfReferral && event.referredUuidPrefix) {
+      registrationEvents.push(event);
+    }
+  }
+
+  const unique = dedupeRegistrationsByIdentity(registrationEvents)
+    .sort((a, b) => Date.parse(a.at || "") - Date.parse(b.at || ""))
+    .slice(0, DUPLICATE_REGISTRATION_COMPARE_LIMIT);
+
+  const result = {};
+
+  for (let i = 0; i < unique.length; i += 1) {
+    const registration = unique[i];
+    const entry = {
+      signals: { ua: false, fp: false, ip: false },
+      severity: null,
+      duplicateRegistrations: 0,
+      otherAccounts: 0,
+    };
+    // Union of signals for the chips, but severity is the worst single pair so
+    // two unrelated weak matches never add up to a stronger level.
+    let severity = "none";
+    const mergeMatch = (signals, pairSeverity) => {
+      entry.signals.ua = entry.signals.ua || signals.ua;
+      entry.signals.fp = entry.signals.fp || signals.fp;
+      entry.signals.ip = entry.signals.ip || signals.ip;
+      severity = severityMax(severity, pairSeverity);
+    };
+
+    for (let j = 0; j < unique.length; j += 1) {
+      if (i === j) continue;
+      const signals = matchedHashSignals(registration, unique[j]);
+      const pairSeverity = severityFromSignals(signals);
+      if (!pairSeverity) continue;
+      mergeMatch(signals, pairSeverity);
+      entry.duplicateRegistrations += 1;
+    }
+
+    const matchedAccounts = new Set();
+    for (const candidate of candidates) {
+      if (!eventHappenedBeforeOrAt(candidate, registration)) continue;
+      const signals = matchedHashSignals(candidate, registration);
+      const pairSeverity = severityFromSignals(signals);
+      if (!pairSeverity) continue;
+      mergeMatch(signals, pairSeverity);
+      matchedAccounts.add(candidate.otherUserUuidPrefix);
+    }
+    entry.otherAccounts = matchedAccounts.size;
+
+    entry.severity = severity === "none" ? null : severity;
+    if (registration.referredEmailHash) {
+      result[registration.referredEmailHash] = entry;
+    }
+  }
+
+  return result;
+}
+
 function groupMatchesBySeverity(matches) {
   const bySeverity = { critical: [], high: [], medium: [] };
   for (const match of matches) {
