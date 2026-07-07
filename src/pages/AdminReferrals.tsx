@@ -1549,7 +1549,7 @@ function ReferrerTable({
       </section>
 
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
-        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-4xl">
+        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-5xl">
           <DialogHeader>
             <DialogTitle>История рефералов</DialogTitle>
             <DialogDescription asChild>
@@ -1590,7 +1590,7 @@ function ReferrerTable({
                       <TableHead>Дата</TableHead>
                       <TableHead>Событие</TableHead>
                       <TableHead>Реферал</TableHead>
-                      <TableHead>
+                      <TableHead className="w-[9rem] min-w-[9rem]">
                         <ColumnHeaderHint label="Сигналы">
                           <p className="font-medium">Совпадения UA / FP / IP</p>
                           <p>
@@ -1618,7 +1618,7 @@ function ReferrerTable({
                             "—"
                           )}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-xs">
+                        <TableCell className="w-[9rem] min-w-[9rem] whitespace-nowrap text-xs">
                           <RegistrationRiskCell item={item} />
                         </TableCell>
                         <TableCell
