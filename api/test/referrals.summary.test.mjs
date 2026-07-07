@@ -218,6 +218,7 @@ describe("referral admin summary", () => {
     assert.equal(warning.severity, "critical");
     assert.equal(warning.evidence.accounts, 1);
     assert.equal(warning.evidence.registrations, 1);
+    assert.equal(warning.evidence.matches[0].referredEmailHash, "email-new");
   });
 
   it("marks repeated fingerprint identities as critical", async () => {
@@ -416,8 +417,8 @@ describe("referral admin summary", () => {
 
   it("marks two registrations sharing UA and FP as critical", async () => {
     await seedEvents([
-      event({ type: "ref_verify_ok", referrerUuid: REF_A, uaHash: "ua-x", fingerprintHash: "fp-x", ipHash: "ip-1", referredUuidPrefix: "user-1" }),
-      event({ type: "ref_verify_ok", referrerUuid: REF_A, uaHash: "ua-x", fingerprintHash: "fp-x", ipHash: "ip-2", referredUuidPrefix: "user-2" }),
+      event({ type: "ref_verify_ok", referrerUuid: REF_A, uaHash: "ua-x", fingerprintHash: "fp-x", ipHash: "ip-1", referredUuidPrefix: "user-1", referredEmailHash: "email-1" }),
+      event({ type: "ref_verify_ok", referrerUuid: REF_A, uaHash: "ua-x", fingerprintHash: "fp-x", ipHash: "ip-2", referredUuidPrefix: "user-2", referredEmailHash: "email-2" }),
     ]);
 
     const res = await getSummary("?days=all&limit=50");
@@ -429,6 +430,8 @@ describe("referral admin summary", () => {
     assert.ok(warning);
     assert.equal(warning.severity, "critical");
     assert.deepEqual(warning.evidence.matches[0].signals, { ua: true, fp: true, ip: false });
+    assert.equal(warning.evidence.matches[0].referredEmailHashA, "email-1");
+    assert.equal(warning.evidence.matches[0].referredEmailHashB, "email-2");
   });
 
   it("marks two registrations sharing UA and IP as high", async () => {
@@ -622,6 +625,7 @@ describe("referral admin summary", () => {
     // Email matching must be case-insensitive.
     const flagged = res.body.items.find((item) => item.id === 1);
     assert.ok(flagged.risk);
+    assert.equal(flagged.referred_email_hash, emailHash("user1@example.com"));
     assert.equal(flagged.risk.severity, "critical");
     assert.deepEqual(flagged.risk.signals, { ua: true, fp: true, ip: false });
     assert.equal(flagged.risk.duplicateRegistrations, 1);

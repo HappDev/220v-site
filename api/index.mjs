@@ -1229,10 +1229,13 @@ app.get("/api/admin/referrals/users/:uuid/points", requireAdminToken, async (req
           )
         : [];
       if (registrationItems.length > 0) {
+        for (const item of registrationItems) {
+          item.referred_email_hash = emailHash(item.referred_user_email.trim().toLowerCase());
+        }
         const events = await queryReferralEvents({ referrerUuid: uuid, limit: 5000 });
         const riskByEmailHash = buildRegistrationRiskSignals(events, uuid);
         for (const item of registrationItems) {
-          const hash = emailHash(item.referred_user_email.trim().toLowerCase());
+          const hash = item.referred_email_hash;
           const risk = riskByEmailHash[hash];
           if (risk) item.risk = risk;
         }

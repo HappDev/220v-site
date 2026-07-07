@@ -124,6 +124,7 @@ function buildOtherAccountMatches(candidates, registrationEvents) {
       const current = byPair.get(key) || {
         otherUserUuidPrefix: candidate.otherUserUuidPrefix,
         referredUuidPrefix: event.referredUuidPrefix || "",
+        referredEmailHash: event.referredEmailHash || "",
         signals: { ua: false, fp: false, ip: false },
         uaHash: undefined,
         fingerprintHash: undefined,
@@ -191,6 +192,8 @@ function buildDuplicateRegistrationMatches(registrationEvents) {
       byPair.set(`${prefixA}|${prefixB}`, {
         referredUuidPrefixA: prefixA,
         referredUuidPrefixB: prefixB,
+        referredEmailHashA: a.referredEmailHash || "",
+        referredEmailHashB: b.referredEmailHash || "",
         severity,
         signals,
         uaHash: signals.ua ? a.uaHash || b.uaHash : undefined,
@@ -399,6 +402,7 @@ function scoreReferrer(group) {
           matches: matches.slice(0, 20).map((match) => ({
             otherUserUuidPrefix: match.otherUserUuidPrefix,
             referredUuidPrefix: match.referredUuidPrefix,
+            referredEmailHash: match.referredEmailHash,
             signals: match.signals,
             uaHash: match.uaHash,
             fingerprintHash: match.fingerprintHash,
@@ -428,6 +432,8 @@ function scoreReferrer(group) {
           matches: matches.slice(0, 20).map((match) => ({
             referredUuidPrefixA: match.referredUuidPrefixA,
             referredUuidPrefixB: match.referredUuidPrefixB,
+            referredEmailHashA: match.referredEmailHashA,
+            referredEmailHashB: match.referredEmailHashB,
             signals: match.signals,
             uaHash: match.uaHash,
             fingerprintHash: match.fingerprintHash,

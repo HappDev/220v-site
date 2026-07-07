@@ -62,8 +62,11 @@ type HashMatchSignals = {
 type HashMatchEntry = {
   otherUserUuidPrefix?: string;
   referredUuidPrefix?: string;
+  referredEmailHash?: string;
   referredUuidPrefixA?: string;
   referredUuidPrefixB?: string;
+  referredEmailHashA?: string;
+  referredEmailHashB?: string;
   signals?: HashMatchSignals;
   uaHash?: string;
   fingerprintHash?: string;
@@ -134,6 +137,12 @@ type ReferrerBalanceLookup = {
   error?: string;
 };
 
+type ReferredEmailLookup = {
+  loading: boolean;
+  byHash: Record<string, string>;
+  error?: string;
+};
+
 type RegistrationRiskSignals = {
   signals: HashMatchSignals;
   severity: RiskLevel | null;
@@ -146,6 +155,7 @@ type ReferralPointItem = {
   amount: number;
   reason: string;
   referred_user_email?: string | null;
+  referred_email_hash?: string | null;
   risk?: RegistrationRiskSignals | null;
   meta?: {
     tier?: string;
@@ -261,6 +271,7 @@ const EVENT_FILTERS = [
 ];
 
 const HISTORY_PAGE_SIZE = 20;
+const REFERRED_EMAIL_LOOKUP_LIMIT = 100;
 const REFERRER_DETAILS_BATCH_SIZE = 8;
 const DEFAULT_EXCHANGE_APPROVE_COMMENT = "Обмен баллов пользователем";
 const DEFAULT_EXCHANGE_REJECT_COMMENT = "Отклонено оператором";
@@ -700,6 +711,50 @@ function MatchSignalChips({ signals }: { signals?: HashMatchSignals }) {
   );
 }
 
+function matchReferredEmailHashes(match: HashMatchEntry) {
+  return [match.referredEmailHash, match.referredEmailHashA, match.referredEmailHashB].filter(
+    (hash): hash is string => typeof hash === "string" && hash.length > 0,
+  );
+}
+
+function collectReferredEmailHashes(item: ReferrerRisk) {
+  const hashes = new Set<string>();
+  for (const warning of item.warnings) {
+    if (!DYNAMIC_MATCH_CODES.has(warning.code) || !Array.isArray(warning.evidence?.matches)) continue;
+    for (const match of warning.evidence.matches) {
+      matchReferredEmailHashes(match).forEach((hash) => hashes.add(hash));
+    }
+  }
+  return hashes;
+}
+
+function hasAllReferredEmails(lookup: ReferredEmailLookup | undefined, hashes: Set<string>) {
+  if (!lookup || lookup.loading) return false;
+  for (const hash of hashes) {
+    if (!lookup.byHash[hash]) return false;
+  }
+  return true;
+}
+
+function ReferredMatchValue({
+  fallback,
+  emailHash,
+  lookup,
+}: {
+  fallback: string;
+  emailHash?: string;
+  lookup?: ReferredEmailLookup;
+}) {
+  const email = emailHash ? lookup?.byHash[emailHash] : undefined;
+  if (email) {
+    return <CopyableText value={email} label="Email" className="max-w-[220px] align-baseline" />;
+  }
+  if (emailHash && lookup?.loading) {
+    return <span className="text-muted-foreground">загрузка...</span>;
+  }
+  return <span className="font-mono text-foreground">{fallback}</span>;
+}
+
 function RegistrationRiskCell({ item }: { item: ReferralPointItem }) {
   if (item.reason !== "registration") {
     return null;
@@ -743,7 +798,13 @@ function RegistrationRiskCell({ item }: { item: ReferralPointItem }) {
   );
 }
 
-function HashMatchDetails({ matches }: { matches?: HashMatchEntry[] }) {
+function HashMatchDetails({
+  matches,
+  referredEmailLookup,
+}: {
+  matches?: HashMatchEntry[];
+  referredEmailLookup?: ReferredEmailLookup;
+}) {
   if (!matches || matches.length === 0) return null;
   return (
     <div className="mt-2 space-y-2">
@@ -752,6 +813,8 @@ function HashMatchDetails({ matches }: { matches?: HashMatchEntry[] }) {
         const right = match.referredUuidPrefix ?? match.referredUuidPrefixB ?? "—";
         const leftLabel = match.otherUserUuidPrefix ? "Аккаунт" : "Реферал A";
         const rightLabel = match.otherUserUuidPrefix ? "Реферал" : "Реферал B";
+        const leftEmailHash = match.otherUserUuidPrefix ? undefined : match.referredEmailHashA;
+        const rightEmailHash = match.referredEmailHash ?? match.referredEmailHashB;
         return (
           <div
             key={`${left}-${right}-${index}`}
@@ -759,11 +822,13 @@ function HashMatchDetails({ matches }: { matches?: HashMatchEntry[] }) {
           >
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span>
-                {leftLabel}: <span className="font-mono text-foreground">{left}</span>
+                {leftLabel}:{" "}
+                <ReferredMatchValue fallback={left} emailHash={leftEmailHash} lookup={referredEmailLookup} />
               </span>
               <ChevronRight className="h-3 w-3 shrink-0" aria-hidden="true" />
               <span>
-                {rightLabel}: <span className="font-mono text-foreground">{right}</span>
+                {rightLabel}:{" "}
+                <ReferredMatchValue fallback={right} emailHash={rightEmailHash} lookup={referredEmailLookup} />
               </span>
               <MatchSignalChips signals={match.signals} />
             </div>
@@ -791,7 +856,13 @@ function HashMatchDetails({ matches }: { matches?: HashMatchEntry[] }) {
   );
 }
 
-function WarningCard({ warning }: { warning: ReferralWarning }) {
+function WarningCard({
+  warning,
+  referredEmailLookup,
+}: {
+  warning: ReferralWarning;
+  referredEmailLookup?: ReferredEmailLookup;
+}) {
   const isDynamic = DYNAMIC_MATCH_CODES.has(warning.code);
   return (
     <div className="rounded-lg bg-background p-3 ring-1 ring-border">
@@ -802,7 +873,7 @@ function WarningCard({ warning }: { warning: ReferralWarning }) {
       </div>
       {warning.description && <p className="mt-2 text-sm text-muted-foreground">{warning.description}</p>}
       {isDynamic && warning.evidence?.matches ? (
-        <HashMatchDetails matches={warning.evidence.matches} />
+        <HashMatchDetails matches={warning.evidence.matches} referredEmailLookup={referredEmailLookup} />
       ) : (
         <pre className="mt-2 overflow-auto rounded bg-muted p-2 text-xs text-muted-foreground">
           {JSON.stringify(warning.evidence, null, 2)}
@@ -812,7 +883,13 @@ function WarningCard({ warning }: { warning: ReferralWarning }) {
   );
 }
 
-function RiskWarningSpoilers({ item }: { item: ReferrerRisk }) {
+function RiskWarningSpoilers({
+  item,
+  referredEmailLookup,
+}: {
+  item: ReferrerRisk;
+  referredEmailLookup?: ReferredEmailLookup;
+}) {
   const grouped =
     item.warningsBySeverity ??
     SPOILER_SEVERITIES.reduce(
@@ -849,7 +926,11 @@ function RiskWarningSpoilers({ item }: { item: ReferrerRisk }) {
             </summary>
             <div className="space-y-2 border-t border-border p-3">
               {warnings.map((warning) => (
-                <WarningCard key={`${warning.code}-${warning.severity}`} warning={warning} />
+                <WarningCard
+                  key={`${warning.code}-${warning.severity}`}
+                  warning={warning}
+                  referredEmailLookup={referredEmailLookup}
+                />
               ))}
             </div>
           </details>
@@ -872,6 +953,7 @@ function ReferrerTable({
 }) {
   const [userLookups, setUserLookups] = useState<Record<string, ReferrerUserLookup>>({});
   const [balanceLookups, setBalanceLookups] = useState<Record<string, ReferrerBalanceLookup>>({});
+  const [referredEmailLookups, setReferredEmailLookups] = useState<Record<string, ReferredEmailLookup>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyUuid, setHistoryUuid] = useState("");
@@ -983,6 +1065,68 @@ function ReferrerTable({
     [balanceLookups, token],
   );
 
+  const loadReferredEmails = useCallback(
+    async (item: ReferrerRisk) => {
+      const hashes = collectReferredEmailHashes(item);
+      if (hashes.size === 0) return;
+
+      const uuid = item.referrerUuid;
+      const existing = referredEmailLookups[uuid];
+      if (existing?.loading || hasAllReferredEmails(existing, hashes)) return;
+
+      setReferredEmailLookups((prev) => ({
+        ...prev,
+        [uuid]: { loading: true, byHash: prev[uuid]?.byHash || {} },
+      }));
+      try {
+        const qs = new URLSearchParams({
+          page: "1",
+          limit: String(REFERRED_EMAIL_LOOKUP_LIMIT),
+        });
+        const res = await fetch(
+          `${apiBase}/admin/referrals/users/${encodeURIComponent(uuid)}/points?${qs}`,
+          {
+            headers: { "X-Admin-Token": token.trim() },
+            credentials: "include",
+          },
+        );
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message =
+            body && typeof body === "object" && "error" in body && typeof body.error === "string"
+              ? body.error
+              : `Ошибка ${res.status}`;
+          throw new Error(message);
+        }
+
+        const data = body as Partial<ReferralPointsResponse> | null;
+        const byHash: Record<string, string> = {};
+        for (const point of Array.isArray(data?.items) ? data.items : []) {
+          const emailHash = typeof point.referred_email_hash === "string" ? point.referred_email_hash : "";
+          const email = typeof point.referred_user_email === "string" ? point.referred_user_email : "";
+          if (emailHash && email) byHash[emailHash] = email;
+        }
+        setReferredEmailLookups((prev) => ({
+          ...prev,
+          [uuid]: {
+            loading: false,
+            byHash: { ...(prev[uuid]?.byHash || {}), ...byHash },
+          },
+        }));
+      } catch (err) {
+        setReferredEmailLookups((prev) => ({
+          ...prev,
+          [uuid]: {
+            loading: false,
+            byHash: prev[uuid]?.byHash || {},
+            error: asErrorMessage(err),
+          },
+        }));
+      }
+    },
+    [referredEmailLookups, token],
+  );
+
   const loadVisibleReferrerDetails = useCallback(async () => {
     setDetailsLoading(true);
     try {
@@ -990,14 +1134,18 @@ function ReferrerTable({
         const batch = items.slice(index, index + REFERRER_DETAILS_BATCH_SIZE);
         await Promise.all(
           batch.map((item) =>
-            Promise.all([loadUserEmail(item.referrerUuid), loadUserBalance(item.referrerUuid)]),
+            Promise.all([
+              loadUserEmail(item.referrerUuid),
+              loadUserBalance(item.referrerUuid),
+              loadReferredEmails(item),
+            ]),
           ),
         );
       }
     } finally {
       setDetailsLoading(false);
     }
-  }, [items, loadUserBalance, loadUserEmail]);
+  }, [items, loadReferredEmails, loadUserBalance, loadUserEmail]);
 
   const loadReferralHistory = useCallback(
     async (uuid: string, pageNum = 1) => {
@@ -1154,7 +1302,7 @@ function ReferrerTable({
                   Update
                 </button>
               </TooltipTrigger>
-              <TooltipContent>Подгрузить email и баланс для текущих строк</TooltipContent>
+              <TooltipContent>Подгрузить email, баланс и email рефералов для текущих строк</TooltipContent>
             </Tooltip>
           </TooltipProvider>
           <div ref={filtersRef} className="relative">
@@ -1262,6 +1410,7 @@ function ReferrerTable({
                           if (event.currentTarget.open) {
                             void loadUserEmail(item.referrerUuid);
                             void loadUserBalance(item.referrerUuid);
+                            void loadReferredEmails(item);
                           }
                         }}
                       >
@@ -1361,7 +1510,10 @@ function ReferrerTable({
                               Списать баллы
                             </button>
                           </div>
-                          <RiskWarningSpoilers item={item} />
+                          <RiskWarningSpoilers
+                            item={item}
+                            referredEmailLookup={referredEmailLookups[item.referrerUuid]}
+                          />
                           <div className="space-y-2">
                             {visibleEvents.length === 0 ? (
                               <p className="text-sm text-muted-foreground">Нет событий выбранного типа</p>
