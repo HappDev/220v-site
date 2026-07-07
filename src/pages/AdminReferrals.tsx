@@ -940,6 +940,28 @@ function RiskWarningSpoilers({
   );
 }
 
+function OtherEventsSpoiler({ events }: { events: ReferralEvent[] }) {
+  return (
+    <details className="group/other rounded-lg ring-1 ring-border">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg p-3 text-sm hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
+        <ChevronRight
+          className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open/other:rotate-90"
+          aria-hidden="true"
+        />
+        <span className="font-semibold text-foreground">Другое</span>
+        <span className="text-xs text-muted-foreground">Событий: {events.length}</span>
+      </summary>
+      <div className="space-y-2 border-t border-border p-3">
+        {events.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Нет событий выбранного типа</p>
+        ) : (
+          events.map((event, index) => <EventCard key={event.id || `${event.at}-${index}`} event={event} />)
+        )}
+      </div>
+    </details>
+  );
+}
+
 function ReferrerTable({
   items,
   eventType,
@@ -1514,15 +1536,7 @@ function ReferrerTable({
                             item={item}
                             referredEmailLookup={referredEmailLookups[item.referrerUuid]}
                           />
-                          <div className="space-y-2">
-                            {visibleEvents.length === 0 ? (
-                              <p className="text-sm text-muted-foreground">Нет событий выбранного типа</p>
-                            ) : (
-                              visibleEvents.map((event, index) => (
-                                <EventCard key={event.id || `${event.at}-${index}`} event={event} />
-                              ))
-                            )}
-                          </div>
+                          <OtherEventsSpoiler events={visibleEvents} />
                         </div>
                       </details>
                     </TableCell>
