@@ -28,12 +28,16 @@ import {
   withReferralExchangeUserLock,
 } from "./referrals/exchangeRequests.mjs";
 import {
+  emptyReferralUserStatus,
   getReferralUserStatus,
   getReferralUserStatuses,
+  grantReferralExchangePermission,
+  isReferralExchangeAllowed,
   isReferralUserPointsBlocked,
   markReferralUserPenalized,
   markReferralUserPointsBlocked,
   markReferralUserPointsUnblocked,
+  revokeReferralExchangePermission,
 } from "./referrals/userStatus.mjs";
 import { SESSION_COOKIE } from "./config.mjs";
 import { base64url, emailHash } from "./auth/crypto.mjs";
@@ -108,6 +112,7 @@ const referralExchangeRequestSchema = z.discriminatedUnion("type", [
   }),
 ]);
 const REFERRAL_POINTS_PER_DAY = 10;
+const REFERRAL_EXCHANGE_PERMISSION_COMMENT_MAX = 1000;
 const DEFAULT_EXCHANGE_APPROVE_COMMENT = "Обмен баллов пользователем";
 const DEFAULT_EXCHANGE_REJECT_COMMENT = "Отклонено оператором";
 const EMAIL_UNSUBSCRIBE_INVALID_LINK_MESSAGE = "Ссылка недействительна или устарела";
@@ -509,6 +514,12 @@ function extractRmwTransactionId(data) {
     null;
   if (raw === null || raw === undefined || raw === "") return "";
   return String(raw);
+}
+
+// Manual accrual blocking and high anti-fraud risk both close the exchange.
+// An active exchange permission overrides this, but never the accrual block itself.
+function isReferralExchangeRestricted(status, risk) {
+  return status.pointsBlocked || risk.riskLevel === "critical" || risk.riskLevel === "high";
 }
 
 function readExchangeRequestComment(body, fallback) {
@@ -1072,16 +1083,7 @@ app.get("/api/admin/referrals/summary", requireAdminToken, async (req, res) => {
     const statuses = await getReferralUserStatuses(summary.referrers.map((item) => item.referrerUuid));
     summary.referrers = summary.referrers.map((item) => ({
       ...item,
-      status: statuses[item.referrerUuid] || {
-        penalized: false,
-        pointsBlocked: false,
-        penalizedAt: null,
-        pointsBlockedAt: null,
-        lastDebitAt: null,
-        lastDebitAmount: null,
-        lastDebitComment: null,
-        updatedAt: null,
-      },
+      status: statuses[item.referrerUuid] || emptyReferralUserStatus(),
     }));
     return res.json(summary);
   } catch (err) {
@@ -1290,6 +1292,60 @@ app.post("/api/admin/referrals/users/:uuid/points/debit", requireAdminToken, asy
   }
 });
 
+app.post(
+  "/api/admin/referrals/users/:uuid/exchange-permission",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const uuid = assertValidUuid(req.params.uuid);
+      const comment = typeof req.body?.comment === "string" ? req.body.comment.trim() : "";
+      if (!comment) {
+        return clientError(res, 400, "Укажите комментарий к разрешению обмена");
+      }
+      if (comment.length > REFERRAL_EXCHANGE_PERMISSION_COMMENT_MAX) {
+        return clientError(res, 400, "Комментарий к разрешению обмена слишком длинный");
+      }
+
+      const expiresAtRaw = typeof req.body?.expiresAt === "string" ? req.body.expiresAt.trim() : "";
+      const expiresAtMs = expiresAtRaw ? Date.parse(expiresAtRaw) : Number.NaN;
+      if (!Number.isFinite(expiresAtMs)) {
+        return clientError(res, 400, "Укажите корректную дату окончания разрешения");
+      }
+      if (expiresAtMs <= Date.now()) {
+        return clientError(res, 400, "Дата окончания разрешения должна быть в будущем");
+      }
+
+      const status = await grantReferralExchangePermission(uuid, {
+        comment,
+        expiresAt: new Date(expiresAtMs).toISOString(),
+      });
+      return res.json({ status });
+    } catch (err) {
+      if (err?.message === "Invalid user UUID") {
+        return clientError(res, 400, "Некорректный UUID пользователя");
+      }
+      return serverError(res, req, err);
+    }
+  },
+);
+
+app.post(
+  "/api/admin/referrals/users/:uuid/exchange-permission/revoke",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const uuid = assertValidUuid(req.params.uuid);
+      const status = await revokeReferralExchangePermission(uuid);
+      return res.json({ status });
+    } catch (err) {
+      if (err?.message === "Invalid user UUID") {
+        return clientError(res, 400, "Некорректный UUID пользователя");
+      }
+      return serverError(res, req, err);
+    }
+  },
+);
+
 app.get("/api/health", async (req, res) => {
   const redisStatus = redis.status;
   if (redisStatus !== "ready") {
@@ -1374,13 +1430,15 @@ app.get("/api/me/referrals/status", requireSession, async (req, res) => {
     const events = await queryReferralEvents({ referrerUuid: userUuid, limit: 5000 });
     const risk = buildReferralRiskForReferrer(events, userUuid);
     const status = await getReferralUserStatus(userUuid);
+    const exchangeAllowed = isReferralExchangeAllowed(status);
 
     return res.json({
       riskLevel: risk.riskLevel,
       riskScore: risk.riskScore,
-      blocked: status.pointsBlocked || risk.riskLevel === "critical" || risk.riskLevel === "high",
+      blocked: isReferralExchangeRestricted(status, risk) && !exchangeAllowed,
       penalized: status.penalized,
       pointsBlocked: status.pointsBlocked,
+      exchangeAllowed,
       warnings: risk.warnings,
       counts: risk.counts,
       lastSeen: risk.lastSeen,
@@ -1429,7 +1487,7 @@ app.post("/api/me/referrals/exchange-requests", requireSession, async (req, res)
     const events = await queryReferralEvents({ referrerUuid: userUuid, limit: 5000 });
     const risk = buildReferralRiskForReferrer(events, userUuid);
     const status = await getReferralUserStatus(userUuid);
-    if (status.pointsBlocked || risk.riskLevel === "critical" || risk.riskLevel === "high") {
+    if (isReferralExchangeRestricted(status, risk) && !isReferralExchangeAllowed(status)) {
       return clientError(res, 403, "Списание/обмен баллов недоступны. Обратитесь в техническую поддержку.");
     }
 

@@ -20,7 +20,7 @@ const { redis } = await import("../redis.mjs");
 const { saveSession } = await import("../auth/session.mjs");
 const { base64url, emailHash } = await import("../auth/crypto.mjs");
 const { SESSION_COOKIE, CSRF_COOKIE } = await import("../config.mjs");
-const { refEventsListKey, refExchangeRequestKey } = await import("../auth/keys.mjs");
+const { refEventsListKey, refExchangeRequestKey, refUserStatusKey } = await import("../auth/keys.mjs");
 const { recordReferralEvent } = await import("../referrals/events.mjs");
 const originalFetch = globalThis.fetch;
 
@@ -101,6 +101,38 @@ function mockReferralPointsFetch({ balance = 100, items = [] } = {}) {
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   };
+}
+
+function blockReferralPoints(uuid) {
+  return request(app)
+    .post(`/api/admin/referrals/users/${uuid}/points/debit`)
+    .set("X-Admin-Token", "admin-test-token")
+    .send({ pointsBlocked: true });
+}
+
+function grantExchangePermission(uuid, { comment = "согласовано с поддержкой", expiresAt } = {}) {
+  return request(app)
+    .post(`/api/admin/referrals/users/${uuid}/exchange-permission`)
+    .set("X-Admin-Token", "admin-test-token")
+    .send({ comment, expiresAt: expiresAt ?? new Date(Date.now() + 3600_000).toISOString() });
+}
+
+function revokeExchangePermission(uuid) {
+  return request(app)
+    .post(`/api/admin/referrals/users/${uuid}/exchange-permission/revoke`)
+    .set("X-Admin-Token", "admin-test-token");
+}
+
+// Two registrations sharing an IP (and therefore the fake request's User-Agent)
+// score as a high-risk duplicate-signal match.
+async function seedHighRiskRegistrations(uuid) {
+  for (let idx = 0; idx < 2; idx += 1) {
+    await recordReferralEvent("ref_verify_ok", fakeReferralReq("127.0.0.1"), {
+      referrerUuid: uuid,
+      referredEmailHash: `email-${idx}`,
+      referredUuidPrefix: `user-${idx}`,
+    });
+  }
 }
 
 describe("referral admin summary", () => {
@@ -848,6 +880,202 @@ describe("referral admin summary", () => {
 
     assert.equal(res.status, 403);
     assert.match(res.body.error, /Списание\/обмен баллов недоступны/);
+  });
+
+  it("requires an admin token to manage the exchange permission", async () => {
+    const grantRes = await request(app)
+      .post(`/api/admin/referrals/users/${REF_A}/exchange-permission`)
+      .send({ comment: "нет токена", expiresAt: new Date(Date.now() + 3600_000).toISOString() });
+    assert.equal(grantRes.status, 401);
+
+    const revokeRes = await request(app).post(
+      `/api/admin/referrals/users/${REF_A}/exchange-permission/revoke`,
+    );
+    assert.equal(revokeRes.status, 401);
+  });
+
+  it("requires a comment and a future expiry to grant the exchange permission", async () => {
+    const expiresAt = new Date(Date.now() + 3600_000).toISOString();
+
+    const missingComment = await grantExchangePermission(REF_A, { comment: "   ", expiresAt });
+    assert.equal(missingComment.status, 400);
+    assert.match(missingComment.body.error, /комментарий/i);
+
+    const invalidExpiry = await grantExchangePermission(REF_A, { expiresAt: "не дата" });
+    assert.equal(invalidExpiry.status, 400);
+    assert.match(invalidExpiry.body.error, /корректную дату/i);
+
+    const pastExpiry = await grantExchangePermission(REF_A, {
+      expiresAt: new Date(Date.now() - 1000).toISOString(),
+    });
+    assert.equal(pastExpiry.status, 400);
+    assert.match(pastExpiry.body.error, /в будущем/i);
+
+    const granted = await grantExchangePermission(REF_A, { comment: "тикет 42", expiresAt });
+    assert.equal(granted.status, 200);
+    assert.equal(granted.body.status.exchangeAllowed, true);
+    assert.equal(granted.body.status.exchangeAllowActive, true);
+    assert.equal(granted.body.status.exchangeAllowComment, "тикет 42");
+    assert.equal(granted.body.status.exchangeAllowedUntil, expiresAt);
+    assert.ok(granted.body.status.exchangeAllowedAt);
+    assert.equal(granted.body.status.exchangeAllowRevokedAt, null);
+  });
+
+  it("exposes the exchange permission in the admin profile and summary", async () => {
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ user: { uuid: REF_A, email: "referrer@example.com" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+
+    const expiresAt = new Date(Date.now() + 3600_000).toISOString();
+    await grantExchangePermission(REF_A, { comment: "видно админам", expiresAt });
+
+    const profile = await request(app)
+      .get(`/api/admin/referrals/users/${REF_A}`)
+      .set("X-Admin-Token", "admin-test-token");
+    assert.equal(profile.status, 200);
+    assert.equal(profile.body.status.exchangeAllowActive, true);
+    assert.equal(profile.body.status.exchangeAllowComment, "видно админам");
+    assert.equal(profile.body.status.exchangeAllowedUntil, expiresAt);
+
+    await seedEvents([event({ type: "ref_click", referrerUuid: REF_A })]);
+    const summary = await getSummary("?days=all&limit=50");
+    const refA = summary.body.referrers.find((referrer) => referrer.referrerUuid === REF_A);
+    assert.equal(refA.status.exchangeAllowActive, true);
+    assert.equal(refA.status.exchangeAllowComment, "видно админам");
+  });
+
+  it("allows points-blocked users with an active permission to create exchange requests", async () => {
+    const blockRes = await blockReferralPoints(REF_A);
+    assert.equal(blockRes.body.status.pointsBlocked, true);
+    await grantExchangePermission(REF_A);
+
+    mockReferralPointsFetch({ balance: 100 });
+    const agent = await createSessionAgent(REF_A);
+
+    const statusRes = await agent.get("/api/me/referrals/status");
+    assert.equal(statusRes.status, 200);
+    assert.equal(statusRes.body.blocked, false);
+    assert.equal(statusRes.body.exchangeAllowed, true);
+    // The permission covers the exchange only; accrual stays blocked.
+    assert.equal(statusRes.body.pointsBlocked, true);
+
+    const res = await agent
+      .post("/api/me/referrals/exchange-requests")
+      .send({ type: "days", days: 1, points: 10 });
+    assert.equal(res.status, 201);
+    assert.equal(res.body.request.points, 10);
+  });
+
+  it("allows high-risk users with an active permission to create exchange requests", async () => {
+    await seedHighRiskRegistrations(REF_A);
+    await grantExchangePermission(REF_A);
+
+    mockReferralPointsFetch({ balance: 100 });
+    const agent = await createSessionAgent(REF_A);
+
+    const statusRes = await agent.get("/api/me/referrals/status");
+    assert.equal(statusRes.status, 200);
+    assert.equal(statusRes.body.riskLevel, "high");
+    assert.equal(statusRes.body.blocked, false);
+    assert.equal(statusRes.body.exchangeAllowed, true);
+
+    const res = await agent
+      .post("/api/me/referrals/exchange-requests")
+      .send({ type: "days", days: 1, points: 10 });
+    assert.equal(res.status, 201);
+  });
+
+  it("blocks the exchange again right after the permission is revoked", async () => {
+    await blockReferralPoints(REF_A);
+    await seedHighRiskRegistrations(REF_B);
+    await grantExchangePermission(REF_A);
+    await grantExchangePermission(REF_B);
+
+    const revoked = await revokeExchangePermission(REF_A);
+    assert.equal(revoked.status, 200);
+    assert.equal(revoked.body.status.exchangeAllowed, false);
+    assert.equal(revoked.body.status.exchangeAllowActive, false);
+    assert.ok(revoked.body.status.exchangeAllowRevokedAt);
+    // The expired grant stays readable as an audit record.
+    assert.equal(revoked.body.status.exchangeAllowComment, "согласовано с поддержкой");
+    assert.ok(revoked.body.status.exchangeAllowedUntil);
+    // Revoking the exchange permission must not touch the accrual block.
+    assert.equal(revoked.body.status.pointsBlocked, true);
+
+    await revokeExchangePermission(REF_B);
+
+    mockReferralPointsFetch({ balance: 100 });
+    const blockedAgent = await createSessionAgent(REF_A);
+    const blockedRes = await blockedAgent
+      .post("/api/me/referrals/exchange-requests")
+      .send({ type: "days", days: 1, points: 10 });
+    assert.equal(blockedRes.status, 403);
+    assert.match(blockedRes.body.error, /Списание\/обмен баллов недоступны/);
+
+    const riskyAgent = await createSessionAgent(REF_B);
+    const riskyRes = await riskyAgent
+      .post("/api/me/referrals/exchange-requests")
+      .send({ type: "days", days: 1, points: 10 });
+    assert.equal(riskyRes.status, 403);
+  });
+
+  it("stops honouring the permission once its expiry passes", async () => {
+    await blockReferralPoints(REF_A);
+    await grantExchangePermission(REF_A);
+
+    // The permission has no background job: rewriting the stored deadline into
+    // the past is enough for the next read to treat it as expired.
+    await redis.hset(refUserStatusKey(REF_A), {
+      exchangeAllowedUntil: new Date(Date.now() - 1000).toISOString(),
+    });
+
+    mockReferralPointsFetch({ balance: 100 });
+    const agent = await createSessionAgent(REF_A);
+
+    const statusRes = await agent.get("/api/me/referrals/status");
+    assert.equal(statusRes.status, 200);
+    assert.equal(statusRes.body.exchangeAllowed, false);
+    assert.equal(statusRes.body.blocked, true);
+
+    const res = await agent
+      .post("/api/me/referrals/exchange-requests")
+      .send({ type: "days", days: 1, points: 10 });
+    assert.equal(res.status, 403);
+
+    const profile = await request(app)
+      .get(`/api/admin/referrals/users/${REF_A}`)
+      .set("X-Admin-Token", "admin-test-token");
+    assert.equal(profile.body.status.exchangeAllowed, true);
+    assert.equal(profile.body.status.exchangeAllowActive, false);
+  });
+
+  it("keeps risk, warnings and accrual history untouched when the permission is granted", async () => {
+    await seedHighRiskRegistrations(REF_A);
+    const debitRes = await blockReferralPoints(REF_A);
+    const statusBefore = debitRes.body.status;
+
+    await grantExchangePermission(REF_A);
+
+    const agent = await createSessionAgent(REF_A);
+    const statusRes = await agent.get("/api/me/referrals/status");
+    assert.equal(statusRes.status, 200);
+    assert.equal(statusRes.body.riskLevel, "high");
+    assert.equal(statusRes.body.pointsBlocked, true);
+    assert.equal(statusRes.body.penalized, statusBefore.penalized);
+    assert.equal(statusRes.body.status.pointsBlockedAt, statusBefore.pointsBlockedAt);
+    assert.ok(
+      statusRes.body.warnings.some((warning) => warning.code === "duplicate_registration_signals"),
+    );
+
+    // No anti-fraud event is recorded for the permission itself.
+    const events = await request(app)
+      .get("/api/admin/referrals/events")
+      .set("X-Admin-Token", "admin-test-token");
+    assert.equal(events.status, 200);
+    assert.equal(events.body.events.length, 2);
+    assert.ok(events.body.events.every((item) => item.type === "ref_verify_ok"));
   });
 
   it("shows pending exchange requests to admin", async () => {

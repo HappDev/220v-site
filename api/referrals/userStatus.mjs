@@ -7,7 +7,18 @@ function normalizeBool(value) {
   return value === true || value === "1" || value === "true";
 }
 
+// The permission expires on its own: nothing rewrites the stored flag, so every
+// read re-checks the deadline instead of relying on a background job.
+function isExchangePermissionActive(exchangeAllowed, exchangeAllowedUntil, now = Date.now()) {
+  if (!exchangeAllowed || !exchangeAllowedUntil) return false;
+  const expiresAt = Date.parse(exchangeAllowedUntil);
+  return Number.isFinite(expiresAt) && expiresAt > now;
+}
+
 function normalizeStatus(raw = {}) {
+  const exchangeAllowed = normalizeBool(raw.exchangeAllowed);
+  const exchangeAllowedUntil = raw.exchangeAllowedUntil || null;
+
   return {
     penalized: normalizeBool(raw.penalized),
     pointsBlocked: normalizeBool(raw.pointsBlocked),
@@ -16,8 +27,22 @@ function normalizeStatus(raw = {}) {
     lastDebitAt: raw.lastDebitAt || null,
     lastDebitAmount: raw.lastDebitAmount ? Number(raw.lastDebitAmount) : null,
     lastDebitComment: raw.lastDebitComment || null,
+    exchangeAllowed,
+    exchangeAllowActive: isExchangePermissionActive(exchangeAllowed, exchangeAllowedUntil),
+    exchangeAllowComment: raw.exchangeAllowComment || null,
+    exchangeAllowedAt: raw.exchangeAllowedAt || null,
+    exchangeAllowedUntil,
+    exchangeAllowRevokedAt: raw.exchangeAllowRevokedAt || null,
     updatedAt: raw.updatedAt || null,
   };
+}
+
+export function emptyReferralUserStatus() {
+  return normalizeStatus({});
+}
+
+export function isReferralExchangeAllowed(status) {
+  return isExchangePermissionActive(status?.exchangeAllowed, status?.exchangeAllowedUntil);
 }
 
 export async function getReferralUserStatus(referrerUuid) {
@@ -97,6 +122,33 @@ export async function markReferralUserPointsUnblocked(referrerUuid) {
     updatedAt: now,
   });
   await redis.hdel(key, "pointsBlockedAt");
+  return getReferralUserStatus(referrerUuid);
+}
+
+export async function grantReferralExchangePermission(referrerUuid, { comment, expiresAt }) {
+  const now = new Date().toISOString();
+  const key = refUserStatusKey(referrerUuid);
+
+  await redis.hset(key, {
+    exchangeAllowed: "1",
+    exchangeAllowComment: comment,
+    exchangeAllowedAt: now,
+    exchangeAllowedUntil: expiresAt,
+    updatedAt: now,
+  });
+  await redis.hdel(key, "exchangeAllowRevokedAt");
+  return getReferralUserStatus(referrerUuid);
+}
+
+export async function revokeReferralExchangePermission(referrerUuid) {
+  const now = new Date().toISOString();
+
+  // The comment and deadline stay in place as an audit trail of the revoked grant.
+  await redis.hset(refUserStatusKey(referrerUuid), {
+    exchangeAllowed: "0",
+    exchangeAllowRevokedAt: now,
+    updatedAt: now,
+  });
   return getReferralUserStatus(referrerUuid);
 }
 

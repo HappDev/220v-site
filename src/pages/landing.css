@@ -1900,11 +1900,20 @@ body.landing-no-scroll { overflow: hidden; }
 .landing-root .support2-attachment--image {
   margin: 0;
   padding: 0;
+}
+.landing-root .support2-attachment__image-preview {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
   border: 0;
   background: transparent;
-  font: inherit;
-  text-align: left;
   cursor: zoom-in;
+}
+.landing-root .support2-attachment__image-preview:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 16px;
 }
 .landing-root .support2-attachment--image img,
 .landing-root .support2-attachment--video video {
@@ -1915,7 +1924,8 @@ body.landing-no-scroll { overflow: hidden; }
   background: rgba(0, 0, 0, 0.24);
   object-fit: contain;
 }
-.landing-root .support2-attachment--image:hover img {
+.landing-root .support2-attachment--image:hover img,
+.landing-root .support2-attachment__image-preview:hover img {
   border-color: rgba(255, 255, 255, 0.28);
 }
 .landing-root .support2-attachment--image span,
@@ -1923,6 +1933,11 @@ body.landing-no-scroll { overflow: hidden; }
   color: var(--muted-2);
   font-size: 12px;
   font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.landing-root .support2-message__bubble p a {
+  color: inherit;
+  text-decoration: underline;
   overflow-wrap: anywhere;
 }
 .landing-root .support2-attachment--file {

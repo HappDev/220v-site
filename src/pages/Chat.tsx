@@ -206,6 +206,24 @@ function singleUrlFromLine(line: string): string | null {
   return trimmed;
 }
 
+function MessageText({ text }: { text: string }) {
+  const parts = text.split(/(https?:\/\/[^\s<>]+)/gi);
+
+  return (
+    <p>
+      {parts.map((part, index) =>
+        /^https?:\/\//i.test(part) ? (
+          <a href={part} key={`${part}-${index}`} target="_blank" rel="noreferrer">
+            {part}
+          </a>
+        ) : (
+          part
+        ),
+      )}
+    </p>
+  );
+}
+
 /**
  * Операторы (TalkMe) присылают вложения одной строкой вида
  * `имя-файла.jpg (8 Kb) https://fs.site-chat.me/.../file.jpg`.
@@ -293,15 +311,16 @@ function ChatAttachmentPreview({
 
   if (kind === "image") {
     return (
-      <button
-        type="button"
-        className="support2-attachment support2-attachment--image"
-        onClick={() => onImageClick({ ...attachment, fileName })}
-        title="Открыть изображение"
-      >
-        <img src={attachment.url} alt={fileName} loading="lazy" decoding="async" />
-        <span>{fileName}</span>
-      </button>
+      <div className="support2-attachment support2-attachment--image">
+        <button
+          type="button"
+          className="support2-attachment__image-preview"
+          onClick={() => onImageClick({ ...attachment, fileName })}
+          title="Открыть изображение"
+        >
+          <img src={attachment.url} alt={fileName} loading="lazy" decoding="async" />
+        </button>
+      </div>
     );
   }
 
@@ -964,7 +983,7 @@ const Chat = () => {
                               <span>{message.sender === "operator" ? message.operatorName || "Оператор" : "Вы"}</span>
                               {message.dateTime ? <time>{formatMessageTime(message.dateTime)}</time> : null}
                             </div>
-                            {displayMessage.text ? <p>{displayMessage.text}</p> : null}
+                            {displayMessage.text ? <MessageText text={displayMessage.text} /> : null}
                             {displayMessage.attachments.length > 0 ? (
                               <div className="support2-message__attachments">
                                 {displayMessage.attachments.map((attachment) => (

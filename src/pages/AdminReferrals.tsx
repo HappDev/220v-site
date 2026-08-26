@@ -96,6 +96,12 @@ type ReferralUserStatus = {
   lastDebitAt?: string | null;
   lastDebitAmount?: number | null;
   lastDebitComment?: string | null;
+  exchangeAllowed?: boolean;
+  exchangeAllowActive?: boolean;
+  exchangeAllowComment?: string | null;
+  exchangeAllowedAt?: string | null;
+  exchangeAllowedUntil?: string | null;
+  exchangeAllowRevokedAt?: string | null;
   updatedAt?: string | null;
 };
 
@@ -396,7 +402,7 @@ function formatExchangeRequestDetails(request: ReferralExchangeRequest): string 
 }
 
 function hasReferralStatus(status?: ReferralUserStatus | null): status is ReferralUserStatus {
-  return Boolean(status?.penalized || status?.pointsBlocked);
+  return Boolean(status?.penalized || status?.pointsBlocked || status?.exchangeAllowActive);
 }
 
 function ReferralStatusBadges({ status }: { status?: ReferralUserStatus | null }) {
@@ -414,8 +420,22 @@ function ReferralStatusBadges({ status }: { status?: ReferralUserStatus | null }
           Заблокирован
         </Badge>
       ) : null}
+      {status.exchangeAllowActive ? (
+        <Badge variant="outline" className="border-emerald-500/50 bg-emerald-500/10 text-emerald-700">
+          Обмен разрешён
+        </Badge>
+      ) : null}
     </span>
   );
+}
+
+// `datetime-local` inputs work in local time, while the API stores ISO/UTC.
+function toDateTimeLocalValue(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function formatChartDate(value: string) {
@@ -989,6 +1009,13 @@ function ReferrerTable({
   const [debitPointsBlocked, setDebitPointsBlocked] = useState(false);
   const [debitLoading, setDebitLoading] = useState(false);
   const [debitError, setDebitError] = useState("");
+  const [permissionOpen, setPermissionOpen] = useState(false);
+  const [permissionUuid, setPermissionUuid] = useState("");
+  const [permissionComment, setPermissionComment] = useState("");
+  const [permissionExpiresAt, setPermissionExpiresAt] = useState("");
+  const [permissionLoading, setPermissionLoading] = useState(false);
+  const [permissionError, setPermissionError] = useState("");
+  const [revokingUuid, setRevokingUuid] = useState("");
   const [statusOverrides, setStatusOverrides] = useState<Record<string, ReferralUserStatus>>({});
   const [detailsLoading, setDetailsLoading] = useState(false);
   const filtersRef = useRef<HTMLDivElement | null>(null);
@@ -1213,6 +1240,14 @@ function ReferrerTable({
     [loadReferralHistory],
   );
 
+  const applyStatusUpdate = useCallback((uuid: string, status: ReferralUserStatus) => {
+    setStatusOverrides((prev) => ({ ...prev, [uuid]: status }));
+    setUserLookups((prev) => ({
+      ...prev,
+      [uuid]: { ...(prev[uuid] || { loading: false }), loading: false, status },
+    }));
+  }, []);
+
   const openDebitDialog = useCallback((uuid: string) => {
     setDebitUuid(uuid);
     setDebitAmount("");
@@ -1221,6 +1256,102 @@ function ReferrerTable({
     setDebitError("");
     setDebitOpen(true);
   }, []);
+
+  const openPermissionDialog = useCallback((uuid: string, status?: ReferralUserStatus | null) => {
+    setPermissionUuid(uuid);
+    setPermissionComment(status?.exchangeAllowActive ? status.exchangeAllowComment || "" : "");
+    setPermissionExpiresAt(
+      status?.exchangeAllowActive ? toDateTimeLocalValue(status.exchangeAllowedUntil) : "",
+    );
+    setPermissionError("");
+    setPermissionOpen(true);
+  }, []);
+
+  const submitExchangePermission = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const comment = permissionComment.trim();
+      if (!comment) {
+        setPermissionError("Укажите комментарий к разрешению обмена");
+        return;
+      }
+      const expiresAt = new Date(permissionExpiresAt);
+      if (!permissionExpiresAt || Number.isNaN(expiresAt.getTime())) {
+        setPermissionError("Укажите дату и время окончания разрешения");
+        return;
+      }
+      if (expiresAt.getTime() <= Date.now()) {
+        setPermissionError("Дата окончания разрешения должна быть в будущем");
+        return;
+      }
+
+      setPermissionLoading(true);
+      setPermissionError("");
+      try {
+        const res = await fetch(
+          `${apiBase}/admin/referrals/users/${encodeURIComponent(permissionUuid)}/exchange-permission`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Admin-Token": token.trim(),
+            },
+            credentials: "include",
+            body: JSON.stringify({ comment, expiresAt: expiresAt.toISOString() }),
+          },
+        );
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message =
+            body && typeof body === "object" && "error" in body && typeof body.error === "string"
+              ? body.error
+              : `Ошибка ${res.status}`;
+          throw new Error(message);
+        }
+        const status = (body as { status?: ReferralUserStatus } | null)?.status;
+        if (status) applyStatusUpdate(permissionUuid, status);
+        toast.success(`Обмен разрешён до ${formatDate(expiresAt.toISOString())}`);
+        setPermissionOpen(false);
+      } catch (err) {
+        setPermissionError(asErrorMessage(err));
+      } finally {
+        setPermissionLoading(false);
+      }
+    },
+    [applyStatusUpdate, permissionComment, permissionExpiresAt, permissionUuid, token],
+  );
+
+  const revokeExchangePermission = useCallback(
+    async (uuid: string) => {
+      setRevokingUuid(uuid);
+      try {
+        const res = await fetch(
+          `${apiBase}/admin/referrals/users/${encodeURIComponent(uuid)}/exchange-permission/revoke`,
+          {
+            method: "POST",
+            headers: { "X-Admin-Token": token.trim() },
+            credentials: "include",
+          },
+        );
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message =
+            body && typeof body === "object" && "error" in body && typeof body.error === "string"
+              ? body.error
+              : `Ошибка ${res.status}`;
+          throw new Error(message);
+        }
+        const status = (body as { status?: ReferralUserStatus } | null)?.status;
+        if (status) applyStatusUpdate(uuid, status);
+        toast.success("Разрешение на обмен отозвано");
+      } catch (err) {
+        toast.error(asErrorMessage(err));
+      } finally {
+        setRevokingUuid("");
+      }
+    },
+    [applyStatusUpdate, token],
+  );
 
   const submitDebitPoints = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -1277,15 +1408,7 @@ function ReferrerTable({
           setBalanceLookups((prev) => ({ ...prev, [debitUuid]: { loading: false, balance: data.balance } }));
         }
         if (data.status) {
-          setStatusOverrides((prev) => ({ ...prev, [debitUuid]: data.status as ReferralUserStatus }));
-          setUserLookups((prev) => ({
-            ...prev,
-            [debitUuid]: {
-              ...(prev[debitUuid] || { loading: false }),
-              loading: false,
-              status: data.status,
-            },
-          }));
+          applyStatusUpdate(debitUuid, data.status);
         }
         setDebitOpen(false);
         if (!statusOnly && historyUuid === debitUuid) {
@@ -1297,11 +1420,22 @@ function ReferrerTable({
         setDebitLoading(false);
       }
     },
-    [debitAmount, debitComment, debitPointsBlocked, debitUuid, historyData?.page, historyUuid, loadReferralHistory, token],
+    [
+      applyStatusUpdate,
+      debitAmount,
+      debitComment,
+      debitPointsBlocked,
+      debitUuid,
+      historyData?.page,
+      historyUuid,
+      loadReferralHistory,
+      token,
+    ],
   );
 
   const selectedUserLookup = historyUuid ? userLookups[historyUuid] : null;
   const selectedDebitLookup = debitUuid ? userLookups[debitUuid] : null;
+  const selectedPermissionLookup = permissionUuid ? userLookups[permissionUuid] : null;
 
   return (
     <>
@@ -1516,6 +1650,19 @@ function ReferrerTable({
                               ) : null}
                             </div>
                           ) : null}
+                          {itemStatus?.exchangeAllowActive ? (
+                            <div className="mb-3 space-y-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-foreground">
+                              <p className="font-semibold">
+                                Обмен разрешён до {formatDate(itemStatus.exchangeAllowedUntil)}
+                              </p>
+                              <p className="text-muted-foreground">
+                                Комментарий: {itemStatus.exchangeAllowComment || "—"}
+                              </p>
+                              <p className="text-muted-foreground">
+                                Выдано: {formatDate(itemStatus.exchangeAllowedAt)}
+                              </p>
+                            </div>
+                          ) : null}
                           <div className="mb-3 flex flex-wrap gap-2">
                             <button
                               type="button"
@@ -1531,6 +1678,23 @@ function ReferrerTable({
                             >
                               Списать баллы
                             </button>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-500/20"
+                              onClick={() => openPermissionDialog(item.referrerUuid, itemStatus)}
+                            >
+                              {itemStatus?.exchangeAllowActive ? "Продлить разрешение" : "Разрешить обмен"}
+                            </button>
+                            {itemStatus?.exchangeAllowActive ? (
+                              <button
+                                type="button"
+                                className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={revokingUuid === item.referrerUuid}
+                                onClick={() => void revokeExchangePermission(item.referrerUuid)}
+                              >
+                                {revokingUuid === item.referrerUuid ? "Отзываем..." : "Отозвать разрешение"}
+                              </button>
+                            ) : null}
                           </div>
                           <RiskWarningSpoilers
                             item={item}
@@ -1744,6 +1908,83 @@ function ReferrerTable({
                 disabled={debitLoading}
               >
                 {debitLoading ? "Списываем..." : "Списать"}
+              </button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={permissionOpen} onOpenChange={setPermissionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Разрешить обмен баллов</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-1">
+                <p>
+                  UUID:{" "}
+                  {permissionUuid ? (
+                    <CopyableText value={permissionUuid} label="UUID" displayValue={shortenUuid(permissionUuid)} />
+                  ) : (
+                    "—"
+                  )}
+                </p>
+                {selectedPermissionLookup?.email ? (
+                  <p>
+                    Email: <CopyableText value={selectedPermissionLookup.email} label="Email" />
+                  </p>
+                ) : null}
+                <p>
+                  Разрешение действует до указанного момента и обходит блокировку начислений и высокий риск
+                  только для обмена. Начисление реферальных баллов остаётся заблокированным.
+                </p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+
+          <form className="space-y-4" onSubmit={submitExchangePermission}>
+            <label className="block text-sm font-semibold text-foreground">
+              Комментарий
+              <Textarea
+                value={permissionComment}
+                onChange={(event) => setPermissionComment(event.target.value)}
+                placeholder="Например: разбор обращения в поддержку, обмен согласован"
+                disabled={permissionLoading}
+                className="mt-1"
+                required
+              />
+            </label>
+            <label className="block text-sm font-semibold text-foreground">
+              Действует до
+              <input
+                type="datetime-local"
+                value={permissionExpiresAt}
+                onChange={(event) => setPermissionExpiresAt(event.target.value)}
+                className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                disabled={permissionLoading}
+                required
+              />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                Время указывается в вашем часовом поясе и сохраняется в UTC.
+              </span>
+            </label>
+            {permissionError ? (
+              <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{permissionError}</p>
+            ) : null}
+            <DialogFooter>
+              <button
+                type="button"
+                className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={permissionLoading}
+                onClick={() => setPermissionOpen(false)}
+              >
+                Отмена
+              </button>
+              <button
+                type="submit"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={permissionLoading}
+              >
+                {permissionLoading ? "Сохраняем..." : "Разрешить обмен"}
               </button>
             </DialogFooter>
           </form>
