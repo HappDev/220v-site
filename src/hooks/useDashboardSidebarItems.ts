@@ -18,6 +18,7 @@ import {
   getVpnTalkmeProfileRaw,
 } from "@/lib/vpnStorage";
 import { resolveIsPremium } from "@/lib/tariff";
+import { useTrafficPurchaseRestriction } from "@/hooks/useTrafficPurchaseRestriction";
 import type { DashboardSidebarItem } from "@/components/DashboardSidebar";
 
 type SidebarUser = {
@@ -46,6 +47,7 @@ export type DashboardSidebarData = {
   userUuid: string | null;
   userLoading: boolean;
   userError: string | null;
+  trafficRestriction: string | null;
 };
 
 export function useDashboardSidebarItems(): DashboardSidebarData {
@@ -57,6 +59,8 @@ export function useDashboardSidebarItems(): DashboardSidebarData {
   }));
   const [userLoading, setUserLoading] = useState(sessionStatus === "checking");
   const [userError, setUserError] = useState<string | null>(null);
+  const [trafficUser, setTrafficUser] = useState<unknown>(null);
+  const trafficRestriction = useTrafficPurchaseRestriction(trafficUser);
 
   useEffect(() => {
     if (sessionStatus !== "authed") return;
@@ -73,6 +77,7 @@ export function useDashboardSidebarItems(): DashboardSidebarData {
           return;
         }
         const user = (data as { user?: unknown } | null)?.user;
+        setTrafficUser(user);
         const uuidCandidate =
           user && typeof user === "object"
             ? (user as Record<string, unknown>).userUuid
@@ -121,7 +126,7 @@ export function useDashboardSidebarItems(): DashboardSidebarData {
       },
     ];
 
-    if (userInfo.isPremium) {
+    if (userInfo.isPremium && !trafficRestriction && !userError) {
       list.push({
         key: "traffic",
         label: "Купить трафик",
@@ -166,7 +171,7 @@ export function useDashboardSidebarItems(): DashboardSidebarData {
         (item.key !== "other" || SIDEBAR_SHOW_OTHER) &&
         (item.key !== "referrals" || SIDEBAR_SHOW_REFERRALS),
     );
-  }, [navigate, userInfo.isPremium]);
+  }, [navigate, userInfo.isPremium, trafficRestriction, userError]);
 
   return {
     email: email || null,
@@ -175,6 +180,7 @@ export function useDashboardSidebarItems(): DashboardSidebarData {
     userUuid: userInfo.userUuid,
     userLoading,
     userError,
+    trafficRestriction,
   };
 }
 

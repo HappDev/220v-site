@@ -13,6 +13,7 @@ import {
   talkmeSessionLimiter,
 } from "./http/rateLimit.mjs";
 import { requireSession } from "./auth/session.mjs";
+import { isProd } from "./config.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -143,46 +144,149 @@ function getTalkMeIdentity(req) {
   };
 }
 
-async function findTalkMeClientsForEmail(email) {
-  const result = await talkmeRequest("/chat/client/search", {
-    email: String(email || "").trim().toLowerCase(),
-  });
-  return (result?.clients || []).map((c) => ({
+function normalizeSiteHost(host) {
+  return String(host || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .replace(/:\d+$/, "");
+}
+
+function siteHostFromUrl(url) {
+  try {
+    return normalizeSiteHost(new URL(String(url)).hostname);
+  } catch {
+    return "";
+  }
+}
+
+const CONFIGURED_TALKME_SITE_HOSTS = (() => {
+  const hosts = new Set();
+  for (const host of (process.env.TALKME_SITE_HOSTS || "").split(",")) {
+    const normalized = normalizeSiteHost(host);
+    if (normalized) hosts.add(normalized);
+  }
+  const publicHost = siteHostFromUrl(process.env.PUBLIC_SITE_URL || "");
+  if (publicHost) hosts.add(publicHost);
+  return hosts;
+})();
+
+/**
+ * Хосты, чьи посетители Talk-Me считаются «нашими».
+ *
+ * Кабинет Talk-Me общий на несколько проектов, поэтому `client/search` по email
+ * отдаёт и записи соседних сайтов. Читать историю из них нельзя: в чат 220v
+ * утечёт переписка другого проекта, а у пользователя, который завёл там
+ * визитёра позже, наша история просто исчезнет.
+ */
+function ownSiteHosts(req) {
+  if (isProd) return CONFIGURED_TALKME_SITE_HOSTS;
+
+  // В dev/staging приложение живёт на произвольном хосте (localhost, 192.168.x.x),
+  // и посетители заведены под ним — иначе история локально всегда пустая.
+  const requestHost = normalizeSiteHost(
+    String(req.headers["x-forwarded-host"] || req.get("host") || "").split(",")[0],
+  );
+  if (!requestHost) return CONFIGURED_TALKME_SITE_HOSTS;
+  return new Set([...CONFIGURED_TALKME_SITE_HOSTS, requestHost]);
+}
+
+/** Talk-Me отдаёт время как `YYYY-MM-DD HH:mm:ss` в UTC. */
+function talkMeDateToMs(value) {
+  if (typeof value !== "string" || !value.trim()) return 0;
+  const parsed = Date.parse(`${value.trim().replace(" ", "T")}Z`);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function mapTalkMeClient(c) {
+  const hosts = [
+    siteHostFromUrl(c?.firstVisit?.page?.url),
+    siteHostFromUrl(c?.lastVisit?.page?.url),
+  ].filter(Boolean);
+
+  return {
     clientId: c.clientId || "",
     searchId: c.searchId ?? null,
     name: c.name || "",
     email: c.email || "",
-  }));
+    siteHosts: [...new Set(hosts)],
+    lastActivityAt: Math.max(
+      talkMeDateToMs(c?.lastVisit?.lastDateTimeUTC),
+      talkMeDateToMs(c?.lastVisit?.dateTimeUTC),
+      talkMeDateToMs(c?.firstVisit?.dateTimeUTC),
+    ),
+  };
 }
 
-async function assertClientLookup(req, res, body) {
-  const { clientId: expectedClientId } = getTalkMeIdentity(req);
-  const hasSearchId =
-    typeof body?.searchId === "number" && Number.isFinite(body.searchId) && body.searchId > 0;
-  const rawClientId = typeof body?.clientId === "string" ? body.clientId.trim() : "";
-  const hasClientId = rawClientId.length > 0;
+async function findTalkMeClientsForEmail(email) {
+  const result = await talkmeRequest("/chat/client/search", {
+    email: String(email || "").trim().toLowerCase(),
+  });
+  return (result?.clients || []).map(mapTalkMeClient);
+}
 
-  if (!hasSearchId && !hasClientId) {
-    clientError(res, 400, "Требуется searchId или clientId");
-    return null;
+function isOwnTalkMeClient(client, syntheticClientId, hosts) {
+  // Запись, созданную нашим же REST-путём, узнаём по детерминированному id:
+  // у неё нет `firstVisit.page.url`, так что по хосту её не опознать.
+  if (syntheticClientId && client.clientId === syntheticClientId) return true;
+  return client.siteHosts.some((host) => hosts.has(host));
+}
+
+/**
+ * Выбирает посетителя Talk-Me, чью историю показываем текущей сессии.
+ *
+ * У одного email легко оказывается несколько «наших» записей (виджет на разных
+ * устройствах плюс запись от REST-отправки), а отвечает оператор всегда в самой
+ * свежей — её и берём.
+ */
+async function resolveTalkMeVisitor(req) {
+  const { email, clientId: syntheticClientId } = getTalkMeIdentity(req);
+  const hosts = ownSiteHosts(req);
+  const all = await findTalkMeClientsForEmail(email);
+  const clients = all.filter((c) => isOwnTalkMeClient(c, syntheticClientId, hosts));
+
+  if (all.length > 0 && clients.length === 0) {
+    console.warn(
+      `[talkme] у сессии есть ${all.length} посетителей Talk-Me, но ни один не относится к [${[...hosts].join(", ")}] — проверьте PUBLIC_SITE_URL/TALKME_SITE_HOSTS`,
+    );
   }
 
-  if (hasClientId && rawClientId !== expectedClientId) {
+  const selected =
+    clients
+      .filter((c) => typeof c.searchId === "number" && c.searchId > 0)
+      .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0] || null;
+
+  return { clients, selected };
+}
+
+/**
+ * Разрешает клиента для запросов, читающих диалог.
+ *
+ * Всегда возвращает `searchId`: `getClientMessageList` с `client.id` отвечает
+ * «Посетитель не найден» для любого офлайн-посетителя, поэтому id-путь для
+ * чтения непригоден. `client === null` означает «посетителя ещё нет» — это не
+ * ошибка, а пустая история до первого сообщения.
+ */
+async function resolveClientLookup(req, res, body) {
+  const { clientId: expectedClientId } = getTalkMeIdentity(req);
+
+  const rawClientId = typeof body?.clientId === "string" ? body.clientId.trim() : "";
+  if (rawClientId && rawClientId !== expectedClientId) {
     clientError(res, 403, "Недопустимый clientId");
     return null;
   }
 
-  if (hasSearchId) {
-    const clients = await findTalkMeClientsForEmail(req.session.email);
-    if (!clients.some((c) => c.searchId === body.searchId)) {
-      clientError(res, 403, "Недопустимый searchId");
-      return null;
-    }
+  const { clients, selected } = await resolveTalkMeVisitor(req);
+
+  const hasSearchId =
+    typeof body?.searchId === "number" && Number.isFinite(body.searchId) && body.searchId > 0;
+  if (hasSearchId && !clients.some((c) => c.searchId === body.searchId)) {
+    clientError(res, 403, "Недопустимый searchId");
+    return null;
   }
 
-  return {
-    client: hasSearchId ? { searchId: body.searchId } : { id: expectedClientId },
-  };
+  const searchId = hasSearchId ? body.searchId : (selected?.searchId ?? null);
+  return { searchId, client: searchId ? { searchId } : null };
 }
 
 function assertSessionClientId(req, res, clientId) {
@@ -402,9 +506,8 @@ function countOnlineOperatorsFromGetListResult(result) {
 
   app.post("/api/talkme/client-search", ...talkmeProtected, async (req, res) => {
   try {
-    const { email } = getTalkMeIdentity(req);
-    const clients = await findTalkMeClientsForEmail(email);
-    return res.json({ clients });
+    const { clients, selected } = await resolveTalkMeVisitor(req);
+    return res.json({ clients, selected });
   } catch (err) {
     const { message, status } = talkmeRouteError(err);
     return res.status(status).json({ error: message });
@@ -418,8 +521,11 @@ function countOnlineOperatorsFromGetListResult(result) {
 
   app.post("/api/talkme/messages", ...talkmeProtected, async (req, res) => {
   try {
-    const lookup = await assertClientLookup(req, res, req.body);
+    const lookup = await resolveClientLookup(req, res, req.body);
     if (!lookup) return;
+    if (!lookup.client) {
+      return res.json({ messages: [], count: 0, searchId: null, hasVisitor: false });
+    }
 
     const { afterId, limit: rawLimit } = req.body;
     const body = {
@@ -446,7 +552,12 @@ function countOnlineOperatorsFromGetListResult(result) {
         status: m.status || "",
       }));
 
-    return res.json({ messages, count: result?.count || 0 });
+    return res.json({
+      messages,
+      count: result?.count || 0,
+      searchId: lookup.searchId,
+      hasVisitor: true,
+    });
   } catch (err) {
     const { message, status } = talkmeRouteError(err);
     return res.status(status).json({ error: message });
@@ -671,8 +782,9 @@ async function setTalkmeClientInfo({ clientId, name, email, customData }) {
 
   app.post("/api/talkme/dialog-status", ...talkmeProtected, async (req, res) => {
   try {
-    const lookup = await assertClientLookup(req, res, req.body);
+    const lookup = await resolveClientLookup(req, res, req.body);
     if (!lookup) return;
+    if (!lookup.client) return res.json({ statusLabel: null, raw: null });
 
     const body = { client: lookup.client };
 
@@ -746,7 +858,7 @@ function getOperatorTyping(clientId) {
   try {
     const { clientId, searchId, operatorLogin, virtual, ttl } = req.body || {};
 
-    const lookup = await assertClientLookup(req, res, { clientId, searchId });
+    const lookup = await resolveClientLookup(req, res, { clientId, searchId });
     if (!lookup) return;
 
     const login = typeof operatorLogin === "string" ? operatorLogin.trim() : "";
@@ -754,14 +866,8 @@ function getOperatorTyping(clientId) {
       return res.status(400).json({ error: "Требуется логин оператора" });
     }
 
-    const trimmedClientId =
-      typeof clientId === "string" && clientId.trim().length > 0
-        ? clientId.trim()
-        : getTalkMeIdentity(req).clientId;
-    const client =
-      typeof searchId === "number" && Number.isFinite(searchId) && searchId > 0
-        ? { searchId }
-        : { clientId: trimmedClientId };
+    const trimmedClientId = getTalkMeIdentity(req).clientId;
+    const client = lookup.client ?? { clientId: trimmedClientId };
     const operator = { login, virtual: virtual === false ? false : true };
 
     const body = { client, operator };

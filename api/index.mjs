@@ -45,6 +45,7 @@ import { createAuthRouter } from "./auth/routes.mjs";
 import { requireSession, getSession, requireAdminToken } from "./auth/session.mjs";
 import { getMailerConfigSummary, sendOtpEmail, verifyMailerConfig } from "./mailer.mjs";
 import { registerTalkMeRoutes } from "./talkme-routes.mjs";
+import { trafficPurchaseRestriction } from "./billing/trafficEligibility.mjs";
 import {
   UnsubscribeTokenConfigError,
   UnsubscribeTokenError,
@@ -1802,6 +1803,21 @@ app.post("/api/checkout", requireSession, checkoutSessionLimiter, async (req, re
       return clientError(res, 502, "Сервис оплаты временно недоступен");
     }
 
+    let checkoutProfile;
+    if (product_key.startsWith("traffic_")) {
+      try {
+        checkoutProfile = await loadUserProfileForEmail(req.session.email, req);
+      } catch (err) {
+        req.log.warn({ err }, "Failed to verify tariff for traffic checkout");
+        return clientError(res, 502, "Не удалось проверить тариф. Попробуйте позже.");
+      }
+      if (extractUserUuidFromProfile(checkoutProfile) !== ref) {
+        return clientError(res, 502, "Не удалось проверить тариф. Попробуйте позже.");
+      }
+      const restriction = trafficPurchaseRestriction(checkoutProfile.user);
+      if (restriction) return clientError(res, 403, restriction);
+    }
+
     const idempotencyKey = base64url(randomBytes(16));
     const payload = {
       user_ref: ref,
@@ -1845,7 +1861,7 @@ app.post("/api/checkout", requireSession, checkoutSessionLimiter, async (req, re
     }
 
     try {
-      const profile = await loadUserProfileForEmail(req.session.email, req);
+      const profile = checkoutProfile ?? await loadUserProfileForEmail(req.session.email, req);
       const inviterUuid = profile?.user?.inviter_uuid || profile?.user?.inviterUuid;
       if (inviterUuid) {
         await recordReferralEvent("ref_checkout_by_referred", req, {

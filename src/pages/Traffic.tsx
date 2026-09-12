@@ -30,7 +30,7 @@ const formatRub = (value: number) => value.toLocaleString("ru-RU");
 
 const Traffic = () => {
   const navigate = useNavigate();
-  const { email, items, handleLogout } = useDashboardSidebarItems();
+  const { email, items, handleLogout, userLoading, userError, trafficRestriction } = useDashboardSidebarItems();
   const [priceByKey, setPriceByKey] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
@@ -82,6 +82,12 @@ const Traffic = () => {
               </p>
             </div>
 
+            {!userLoading && (userError || trafficRestriction) && (
+              <p className="price-page__note" role="status">
+                {userError || trafficRestriction} <Link to="/tariff" className="modal__link">К тарифам</Link>
+              </p>
+            )}
+
             <div className="plans plans--page">
               {cards.map((c) => (
                 <div key={c.gb} className="plan">
@@ -104,7 +110,7 @@ const Traffic = () => {
                   <button
                     type="button"
                     className="btn btn--ghost btn--wide plan__btn"
-                    disabled={loading}
+                    disabled={loading || userLoading || Boolean(userError || trafficRestriction)}
                     onClick={() => navigate(`/traffic/pay?gb=${c.gb}`)}
                   >
                     Выбрать

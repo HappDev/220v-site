@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Paperclip, Send, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -34,21 +34,13 @@ type ChatMessage = {
   attachments?: ChatAttachment[];
 };
 
-type ClientSearchResponse = {
-  clients?: Array<{
-    clientId?: string;
-    searchId?: number | null;
-    name?: string;
-    email?: string;
-  }>;
-};
-
 type ClientIdResponse = {
   clientId?: string;
 };
 
 type MessagesResponse = {
   messages?: ChatMessage[];
+  hasVisitor?: boolean;
 };
 
 type SendResponse = {
@@ -113,11 +105,6 @@ async function uploadChatAttachment(
   return (data ?? {}) as ChatAttachmentUploadResponse;
 }
 
-function isTalkMeVisitorNotFoundError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err || "");
-  return /посетитель не найден|visitor not found/i.test(message);
-}
-
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -143,8 +130,8 @@ function messageMatchesSentMessage(
 /** Сообщения — каждые 8 с; мета (операторы, статус, typing) — каждые 20 с. */
 const CHAT_MESSAGES_POLL_MS = 8_000;
 const CHAT_META_POLL_MS = 20_000;
-const CHAT_SEND_HISTORY_SYNC_TIMEOUT_MS = 6_000;
-const CHAT_SEND_HISTORY_SYNC_RETRY_MS = 900;
+/** Догоняем свежеотправленное сообщение чаще, чем обычный поллинг. */
+const CHAT_SEND_SYNC_DELAYS_MS = [700, 1500, 2500, 4000];
 
 function formatMessageTime(value: string): string {
   if (!value) return "";
@@ -366,8 +353,6 @@ const Chat = () => {
   const { email, items, handleLogout } = useDashboardSidebarItems();
   const [announcement, setAnnouncement] = useState<string | null>(null);
   const [clientId, setClientId] = useState("");
-  const [hasTalkMeVisitor, setHasTalkMeVisitor] = useState(false);
-  const [searchId, setSearchId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
@@ -386,18 +371,13 @@ const Chat = () => {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const previewUrlsRef = useRef<Set<string>>(new Set());
   const mountedRef = useRef(true);
-  const visitorSyncActiveRef = useRef(false);
+  /** Отправленные сообщения, которых ещё нет в ответе Talk-Me. */
+  const pendingMessagesRef = useRef<ChatMessage[]>([]);
 
   const handleAuthError = useCallback(() => {
     setError("Сессия истекла. Войдите снова.");
     navigate("/", { replace: true });
   }, [navigate]);
-
-  const clientLookupBody = useMemo(() => {
-    if (searchId) return { searchId };
-    if (clientId && hasTalkMeVisitor) return { clientId };
-    return null;
-  }, [clientId, hasTalkMeVisitor, searchId]);
 
   const scrollMessagesToEnd = useCallback(() => {
     const container = messagesContainerRef.current;
@@ -429,165 +409,56 @@ const Chat = () => {
     textarea.style.overflowY = hasMaxHeight && textarea.scrollHeight > parsedMaxHeight ? "auto" : "hidden";
   }, []);
 
+  /**
+   * Ответ Talk-Me индексирует свежее сообщение с задержкой, поэтому только что
+   * отправленные сообщения держим отдельно и подмешиваем в конец, пока они не
+   * появятся в истории — иначе поллинг стирал бы их из списка.
+   */
+  const withPendingMessages = useCallback((loaded: ChatMessage[]): ChatMessage[] => {
+    const stillPending = pendingMessagesRef.current.filter(
+      (pending) => !loaded.some((message) => messageMatchesSentMessage(message, pending, null)),
+    );
+    pendingMessagesRef.current = stillPending;
+    return stillPending.length > 0 ? [...loaded, ...stillPending] : loaded;
+  }, []);
+
   const loadMessages = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
-      if (!clientLookupBody) return;
       if (!silent) setMessagesLoading(true);
       try {
+        // Идентификация — на бэкенде: он выбирает посетителя Talk-Me по сессии
+        // и читает диалог по `searchId`.
         const data = await talkmePost<MessagesResponse>(
           "/talkme/messages",
-          {
-            ...clientLookupBody,
-            limit: 200,
-          },
+          { limit: 200 },
           handleAuthError,
         );
-        setMessages(Array.isArray(data.messages) ? data.messages : []);
+        if (!mountedRef.current) return;
+        setMessages(withPendingMessages(Array.isArray(data.messages) ? data.messages : []));
         setError(null);
       } catch (err) {
+        if (!mountedRef.current) return;
         setError(err instanceof Error ? err.message : "Не удалось загрузить сообщения");
       } finally {
         if (!silent) setMessagesLoading(false);
       }
     },
-    [clientLookupBody, handleAuthError],
+    [handleAuthError, withPendingMessages],
   );
 
-  const applyClientSearchResponse = useCallback((data: ClientSearchResponse): boolean => {
-    const client = Array.isArray(data.clients) ? data.clients[0] : null;
-    const foundClientId = typeof client?.clientId === "string" ? client.clientId.trim() : "";
-    const foundSearchId = typeof client?.searchId === "number" ? client.searchId : null;
-    const foundVisitor = Boolean(foundClientId || foundSearchId);
-
-    setClientId((prev) => foundClientId || prev);
-    setSearchId(foundSearchId);
-    setHasTalkMeVisitor(foundVisitor);
-
-    return foundVisitor;
-  }, []);
-
-  const refreshClientLookup = useCallback(async (): Promise<boolean> => {
-    if (!email) return false;
-    const data = await talkmePost<ClientSearchResponse>("/talkme/client-search", {}, handleAuthError);
-    if (!mountedRef.current) return false;
-    return applyClientSearchResponse(data);
-  }, [applyClientSearchResponse, email, handleAuthError]);
-
-  const fetchMessagesByClientId = useCallback(async (nextClientId: string): Promise<ChatMessage[]> => {
-    const messagesData = await talkmePost<MessagesResponse>(
-      "/talkme/messages",
-      {
-        clientId: nextClientId,
-        limit: 200,
-      },
-      handleAuthError,
-    );
-    return Array.isArray(messagesData.messages) ? messagesData.messages : [];
-  }, [handleAuthError]);
-
-  const loadMessagesByClientId = useCallback(async (nextClientId: string): Promise<void> => {
-    const nextMessages = await fetchMessagesByClientId(nextClientId);
-    if (!mountedRef.current) return;
-    setMessages(nextMessages);
-    setHasTalkMeVisitor(true);
-    setError(null);
-  }, [fetchMessagesByClientId]);
-
-  const syncMessagesAfterVisitorCreation = useCallback(
-    async (nextClientId: string) => {
-      if (visitorSyncActiveRef.current) return;
-      visitorSyncActiveRef.current = true;
-
-      const fastDelaysMs = [1200, 2500, 5000, 8000];
-      const slowIntervalMs = 15000;
-      const warnAfterMs = 60000;
-      const startedAt = Date.now();
-      let warned = false;
-
-      try {
-        for (let attempt = 0; mountedRef.current; attempt += 1) {
-          const delay = attempt < fastDelaysMs.length ? fastDelaysMs[attempt] : slowIntervalMs;
-          await wait(delay);
-          if (!mountedRef.current) return;
-
-          try {
-            await refreshClientLookup();
-            await loadMessagesByClientId(nextClientId);
-            return;
-          } catch (err) {
-            if (!isTalkMeVisitorNotFoundError(err)) {
-              if (mountedRef.current) {
-                setError("Сообщение отправлено, но историю пока не удалось обновить");
-              }
-              return;
-            }
-          }
-
-          if (!warned && Date.now() - startedAt >= warnAfterMs && mountedRef.current) {
-            warned = true;
-            setError(
-              "Сообщение отправлено, но история чата ещё не подгрузилась. Если ответ оператора не появится в течение минуты — обновите страницу.",
-            );
-          }
-        }
-      } finally {
-        visitorSyncActiveRef.current = false;
-      }
-    },
-    [loadMessagesByClientId, refreshClientLookup],
-  );
-
-  const syncMessagesAfterSend = useCallback(
-    async (
-      nextClientId: string,
-      optimisticMessage: ChatMessage,
-      sentMessageId?: number | null,
-    ): Promise<void> => {
-      const startedAt = Date.now();
-      let lastError: unknown = null;
-
-      while (mountedRef.current && Date.now() - startedAt <= CHAT_SEND_HISTORY_SYNC_TIMEOUT_MS) {
-        try {
-          const nextMessages = await fetchMessagesByClientId(nextClientId);
-          if (!mountedRef.current) return;
-
-          const sentMessageLoaded = nextMessages.some((message) =>
-            messageMatchesSentMessage(message, optimisticMessage, sentMessageId),
-          );
-
-          if (sentMessageLoaded) {
-            setMessages(nextMessages);
-            setHasTalkMeVisitor(true);
-            setError(null);
-            return;
-          }
-
-          setMessages([...nextMessages, optimisticMessage]);
-          lastError = null;
-        } catch (err) {
-          lastError = err;
-          if (!mountedRef.current) return;
-        }
-
-        const elapsedMs = Date.now() - startedAt;
-        const remainingMs = CHAT_SEND_HISTORY_SYNC_TIMEOUT_MS - elapsedMs;
-        if (remainingMs <= 0) break;
-        await wait(Math.min(CHAT_SEND_HISTORY_SYNC_RETRY_MS, remainingMs));
-      }
-
+  /**
+   * После отправки Talk-Me отдаёт сообщение в истории не сразу, поэтому
+   * несколько раз перезапрашиваем её с нарастающей паузой. Что не догнали —
+   * доберёт обычный поллинг, optimistic-сообщение до этого остаётся на экране.
+   */
+  const syncMessagesAfterSend = useCallback(async (): Promise<void> => {
+    for (const delay of CHAT_SEND_SYNC_DELAYS_MS) {
+      if (!mountedRef.current || pendingMessagesRef.current.length === 0) return;
+      await wait(delay);
       if (!mountedRef.current) return;
-
-      if (isTalkMeVisitorNotFoundError(lastError)) {
-        setHasTalkMeVisitor(false);
-        setError(null);
-        void syncMessagesAfterVisitorCreation(nextClientId);
-        return;
-      }
-
-      setError("Сообщение отправлено, но историю пока не удалось обновить");
-    },
-    [fetchMessagesByClientId, syncMessagesAfterVisitorCreation],
-  );
+      await loadMessages({ silent: true });
+    }
+  }, [loadMessages]);
 
   const refreshMeta = useCallback(async () => {
     const requests: Promise<void>[] = [
@@ -596,13 +467,11 @@ const Chat = () => {
         .catch(() => setOnlineCount(null)),
     ];
 
-    if (clientLookupBody) {
-      requests.push(
-        talkmePost<DialogStatusResponse>("/talkme/dialog-status", clientLookupBody, handleAuthError)
-          .then((data) => setStatusLabel(data.statusLabel || null))
-          .catch(() => setStatusLabel(null)),
-      );
-    }
+    requests.push(
+      talkmePost<DialogStatusResponse>("/talkme/dialog-status", {}, handleAuthError)
+        .then((data) => setStatusLabel(data.statusLabel || null))
+        .catch(() => setStatusLabel(null)),
+    );
 
     if (clientId) {
       requests.push(
@@ -619,7 +488,7 @@ const Chat = () => {
     }
 
     await Promise.all(requests);
-  }, [clientId, clientLookupBody, handleAuthError]);
+  }, [clientId, handleAuthError]);
 
   useEffect(() => {
     if (!email) return;
@@ -672,24 +541,14 @@ const Chat = () => {
 
   useEffect(() => {
     let cancelled = false;
-    setInitialLoading(true);
-    setError(null);
 
-    refreshClientLookup()
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Не удалось подключиться к чату");
-      })
-      .finally(() => {
-        if (!cancelled) setInitialLoading(false);
-      });
+    loadMessages({ silent: true }).finally(() => {
+      if (!cancelled) setInitialLoading(false);
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [refreshClientLookup]);
-
-  useEffect(() => {
-    void loadMessages({ silent: true });
   }, [loadMessages]);
 
   useEffect(() => {
@@ -852,6 +711,7 @@ const Chat = () => {
 
     setDraft("");
     clearSelectedFile();
+    pendingMessagesRef.current = [...pendingMessagesRef.current, optimisticMessage];
     setMessages((prev) => [...prev, optimisticMessage]);
     setSending(true);
     setError(null);
@@ -873,19 +733,17 @@ const Chat = () => {
         handleAuthError,
       );
 
-      const nextClientId = data.clientId || clientId;
       if (data.clientId) {
         setClientId(data.clientId);
       }
-      if (nextClientId) {
-        await syncMessagesAfterSend(nextClientId, optimisticMessage, data.messageId);
-      } else {
-        await loadMessages({ silent: true });
-      }
+      await syncMessagesAfterSend();
       await refreshMeta();
     } catch (err) {
       setDraft(text);
       setSelectedFile(fileToSend);
+      pendingMessagesRef.current = pendingMessagesRef.current.filter(
+        (message) => message.id !== optimisticMessage.id,
+      );
       setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id));
       setError(err instanceof Error ? err.message : "Не удалось отправить сообщение");
     } finally {

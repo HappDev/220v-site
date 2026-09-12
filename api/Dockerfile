@@ -23,6 +23,7 @@ COPY --chown=node:node api/http ./http
 COPY --chown=node:node api/auth ./auth
 COPY --chown=node:node api/email ./email
 COPY --chown=node:node api/referrals ./referrals
+COPY --chown=node:node api/billing ./billing
 USER node
 EXPOSE 3001
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \

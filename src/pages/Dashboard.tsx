@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
 import { useSession } from "@/hooks/useSession";
+import { trafficPurchaseRestriction, useTrafficPurchaseRestriction } from "@/hooks/useTrafficPurchaseRestriction";
 import {
   clearChatCompatCache,
   consumePendingPromoCode,
@@ -568,6 +569,11 @@ const Dashboard = () => {
 
   const handleTrafficPayment = async (paymentMethod: number) => {
     if (!trafficPaymentStep) return;
+    const restriction = trafficPurchaseRestriction(userData);
+    if (restriction) {
+      toast.error(restriction);
+      return;
+    }
     if (!userData?.userUuid) {
       toast.error("Не найден профиль пользователя. Обновите страницу.");
       return;
@@ -689,6 +695,7 @@ const Dashboard = () => {
   };
 
   const trafficLimitBytes = userData?.trafficLimitBytes ?? 0;
+  const trafficRestriction = useTrafficPurchaseRestriction(userData);
   const usedTrafficBytes = userData?.usedTrafficBytes ?? 0;
   const hasTrafficLimit = trafficLimitBytes > 0;
   const trafficPercent = hasTrafficLimit
@@ -733,7 +740,7 @@ const Dashboard = () => {
       onClick: () => navigate("/tariff"),
       match: "/tariff",
     },
-    ...(isPremiumPlan
+    ...(isPremiumPlan && !trafficRestriction
       ? ([
           {
             key: "traffic",
@@ -1071,7 +1078,7 @@ const Dashboard = () => {
                     <HelpCircle className="h-4 w-4" aria-hidden="true" />
                     Подробнее
                   </button>
-                  {isPremiumPlan ? (
+                  {isPremiumPlan && !trafficRestriction ? (
                     <button
                       type="button"
                       className="dash-card__footer-btn"
@@ -1219,7 +1226,14 @@ const Dashboard = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="dash-modal__stack">
-            {!trafficPaymentStep ? (
+            {trafficRestriction ? (
+              <>
+                <p role="status">{trafficRestriction}</p>
+                <button type="button" className="dash-modal-btn dash-modal-btn--ghost" onClick={() => navigate("/tariff")}>
+                  К тарифам
+                </button>
+              </>
+            ) : !trafficPaymentStep ? (
               [
                 { gb: 20, price: productPriceByKey.get("traffic_20gb") ?? null },
                 { gb: 50, price: productPriceByKey.get("traffic_50gb") ?? null },

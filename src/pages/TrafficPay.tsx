@@ -44,6 +44,7 @@ const TrafficPay = () => {
     userUuid,
     userLoading,
     userError,
+    trafficRestriction,
   } = useDashboardSidebarItems();
 
   const [billingMeta, setBillingMeta] = useState<BillingMeta | null>(null);
@@ -96,7 +97,7 @@ const TrafficPay = () => {
   }, [billingMeta, productKey]);
 
   const handlePayment = async (paymentMethod: number) => {
-    if (!userUuid || !productKey) return;
+    if (!userUuid || !productKey || userLoading || userError || trafficRestriction) return;
     setPaymentLoading(paymentMethod);
     try {
       const { data, error: fnError } = await apiPost<{ payment_url?: string }>("/checkout", {
@@ -129,7 +130,7 @@ const TrafficPay = () => {
   };
 
   const loading = userLoading || billingLoading;
-  const error = userError ?? billingError;
+  const error = userError ?? billingError ?? trafficRestriction;
 
   return (
     <LandingShell className="landing-root--with-sidebar">
@@ -169,9 +170,9 @@ const TrafficPay = () => {
                     <button
                       type="button"
                       className="btn btn--ghost btn--wide"
-                      onClick={() => navigate("/traffic")}
+                      onClick={() => navigate(trafficRestriction ? "/tariff" : "/traffic")}
                     >
-                      Вернуться к пакетам
+                      {trafficRestriction ? "К тарифам" : "Вернуться к пакетам"}
                     </button>
                   </div>
                 ) : (
